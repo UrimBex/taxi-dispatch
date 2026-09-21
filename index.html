@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RideOps · Taxi Dispatch Automation</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo-sm">🚕</span><div><b>RideOps</b><small>Taxi dispatch automation · Prishtina · Obiliq · Fushë Kosovë</small></div></div>
+  <div class="sim">
+    <span class="clock" id="clock">08:15</span>
+    <label>Speed <select id="speed"><option value="1">1×</option><option value="6">6×</option><option value="12" selected>12×</option><option value="30">30×</option></select></label>
+    <button class="btn sm" id="pause">⏸ Pause</button>
+    <label class="chk"><input type="checkbox" id="demand" checked> Auto demand</label>
+    <button class="btn sm ghost" id="reset">↺ Reset</button>
+  </div>
+</header>
+<main class="layout">
+  <section class="devices">
+    <div class="dev-tabs" id="dev-tabs">
+      <button data-dev="customer" class="on">📱 Customer app</button>
+      <button data-dev="ivr">☎️ Phone / IVR</button>
+      <button data-dev="driver">🚗 Driver app</button>
+    </div>
+    <div class="device" id="dev-customer"><div class="notch"></div><div class="screen" id="cust"></div></div>
+    <div class="device" id="dev-ivr" style="display:none"><div class="notch"></div><div class="screen" id="ivr"></div></div>
+    <div class="device" id="dev-driver" style="display:none"><div class="notch"></div><div class="screen" id="drv"></div></div>
+    <p class="hint" id="dev-hint"></p>
+  </section>
+  <section id="ops">
+    <div id="sos-banner" style="display:none"></div>
+    <div class="kpis" id="kpis"></div>
+    <div class="ops-body">
+      <div class="ops-left">
+        <div class="map-wrap">
+          <div id="ops-map"></div>
+          <div class="map-tools"><label class="chk"><input type="checkbox" id="ops-heat" checked> Traffic</label><label class="chk"><input type="checkbox" id="ops-labels" checked> Labels</label><button class="btn sm" id="ops-fit" title="Zoom to the whole service area">⤢ Fit all</button><span id="pick-hint" class="pick-hint"></span></div>
+          <div class="legend"><span><i style="background:#22c55e"></i>Available</span><span><i style="background:#f59e0b"></i>Offered</span><span><i style="background:#6366f1"></i>To pickup</span><span><i style="background:#a855f7"></i>At pickup</span><span><i style="background:#0ea5e9"></i>On trip</span><span><i class="pin"></i>Waiting rider</span></div>
+          <div id="voip-modal" style="display:none"></div>
+        </div>
+        <div id="ops-detail" class="detail" style="display:none"></div>
+      </div>
+      <aside class="ops-side"><nav class="tabs" id="ops-tabs"></nav><div id="ops-pane"></div></aside>
+    </div>
+  </section>
+</main>
+<script src="vendor/leaflet.js"></script>
+<script src="js/roads.js"></script>
+<script src="js/city.js"></script>
+<script src="js/store.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/map.js"></script>
+<script src="js/main.js"></script>
+<script src="js/customer.js"></script>
+<script src="js/driver.js"></script>
+<script src="js/ivr.js"></script>
+<script src="js/ops.js"></script>
+<script>RO.start();</script>
+</body>
+</html>
