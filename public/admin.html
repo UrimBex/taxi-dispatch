@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RideOps · Platform admin</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  body{padding:20px;max-width:900px;margin:0 auto;align-items:stretch}
+  h1{font-size:20px}h2{font-size:15px;color:var(--acc);margin:28px 0 10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600}
+  form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+  form label{flex:1;min-width:140px;margin:0}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .msg{font-size:12.5px;min-height:1.2em}.msg.ok{color:var(--ok)}.msg.bad{color:#fca5a5}
+  select{width:auto}
+</style>
+</head>
+<body>
+  <div class="row"><h1>🚕 RideOps · Platform admin</h1><span><span id="who" class="mut"></span> <button class="btn sm ghost" id="logout">Sign out</button></span></div>
+  <p class="mut">Create a company for each taxi-operator client this install serves. Each one gets its own isolated
+    simulated fleet, bookings, riders and dashboard — nothing here is shared between companies.
+    <a href="/" style="color:var(--info)">Back to the app →</a></p>
+
+  <h2>Companies</h2>
+  <div class="card"><table id="companies"><thead><tr><th>Name</th><th>Slug</th><th>Staff</th><th>Drivers</th><th>Trips</th><th></th></tr></thead><tbody></tbody></table></div>
+
+  <div class="card">
+    <b>New company</b>
+    <form id="f-company">
+      <label>Company name<input name="name" required placeholder="e.g. Golden Cabs"></label>
+      <label>Ops username<input name="opsUsername" required placeholder="ops-goldencabs"></label>
+      <label>Ops staff name<input name="opsName" placeholder="Dispatcher name"></label>
+      <label>Ops password<input name="opsPassword" type="password" required placeholder="min 8 characters"></label>
+      <button class="btn primary" type="submit">Create company</button>
+    </form>
+    <div class="msg" id="msg-company"></div>
+  </div>
+
+  <h2>Drivers</h2>
+  <div class="card">
+    <form id="f-driver">
+      <label>Company<select name="companyId" id="f-driver-company"></select></label>
+      <label>Driver name<input name="name" required placeholder="e.g. Arben Kelmendi"></label>
+      <label>Username<input name="username" required placeholder="e.g. arben"></label>
+      <label>Password<input name="password" type="password" required placeholder="min 8 characters"></label>
+      <button class="btn primary" type="submit">Add driver login</button>
+    </form>
+    <div class="msg" id="msg-driver"></div>
+    <small>Binds the login to the next free seat in that company's simulated fleet (up to its fleet size).</small>
+  </div>
+
+  <script>
+  (function () {
+    const $ = s => document.querySelector(s);
+    async function api(path, opts) {
+      const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts));
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ('Request failed (' + r.status + ')'));
+      return j;
+    }
+    function flash(id, text, ok) { const el = $(id); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'bad'); }
+
+    async function loadCompanies() {
+      const companies = await api('/api/admin/companies');
+      $('#companies tbody').innerHTML = companies.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.slug)}</td><td>${c._count.users}</td><td>${c._count.drivers}</td><td>${c._count.trips}</td><td><button class="btn sm" data-pick="${c.id}">Add driver here</button></td></tr>`).join('') || '<tr><td colspan="6" class="mut">No companies yet — create one below.</td></tr>';
+      $('#f-driver-company').innerHTML = companies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    }
+    function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    $('#companies').addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) $('#f-driver-company').value = b.dataset.pick; });
+
+    $('#f-company').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target));
+      try { await api('/api/admin/companies', { method: 'POST', body: JSON.stringify(data) }); e.target.reset(); flash('#msg-company', 'Company created.', true); loadCompanies(); }
+      catch (err) { flash('#msg-company', err.message, false); }
+    });
+    $('#f-driver').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target)), companyId = data.companyId; delete data.companyId;
+      try { const r = await api(`/api/admin/companies/${companyId}/drivers`, { method: 'POST', body: JSON.stringify(data) }); e.target.reset(); flash('#msg-driver', `Added — controls ${r.vehicle ? r.vehicle.model + ' ' + r.vehicle.plate : 'a fleet vehicle'}.`, true); loadCompanies(); }
+      catch (err) { flash('#msg-driver', err.message, false); }
+    });
+
+    $('#logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.href = '/'; });
+
+    api('/api/auth/me').then(me => { $('#who').textContent = `${me.name} · Superuser`; }).catch(() => { location.href = '/'; });
+    loadCompanies();
+  })();
+  </script>
+</body>
+</html>

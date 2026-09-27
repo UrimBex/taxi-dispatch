@@ -30,21 +30,21 @@
       enroute: d ? `Booking ${b.id}: ${d.name} in a ${d.model}, plate ${d.plate}, is on the way and arrives in about ${Math.max(1, Math.round(eta))} minutes.` : '', arrived: `Your driver ${d ? d.name : ''} has arrived at the pickup point.`, ontrip: 'You are currently on a trip.' };
     return m[b.status] || 'Status unavailable.';
   }
-  function dial(phone) {
-    const c = E.newCall(phone); Object.assign(iv, { callId: c.id, phone, step: 'menu', lines: [], t0: Date.now(), seen: 'ivr', bookedSeen: null });
+  async function dial(phone) {
+    const c = await E.newCall(phone); Object.assign(iv, { callId: c.id, phone, step: 'menu', lines: [], t0: Date.now(), seen: 'ivr', bookedSeen: null });
     say('sys', `Dialling 0800-RIDEOPS from ${U.fmtPhone(phone)}…`); setTimeout(() => { if (iv.step === 'menu') say('ivr', menuText()); }, 500);
   }
-  function hangup(msg) {
-    if (iv.callId) E.endCall(iv.callId);
+  async function hangup(msg) {
+    if (iv.callId) await E.endCall(iv.callId);
     iv.step = 'ended'; say('sys', msg || 'Call ended.');
   }
-  function press(k) {
+  async function press(k) {
     if (['idle', 'ended', 'queued', 'operator'].includes(iv.step)) return;
     say('you', 'Pressed ' + k);
     if (k === '*') return hangup('You hung up.');
     if (iv.step === 'confirm') {
       if (k === '1') {
-        const lt = lastTrip(), b = E.createBooking({ source: 'ivr', phone: iv.phone, name: cust().name, pickup: lt.pickup, dropoff: lt.dropoff, vehicle: lt.vehicle || 'standard', payment: 'card', callId: iv.callId });
+        const lt = lastTrip(), b = await E.ivrRebook({ pickup: lt.pickup, dropoff: lt.dropoff, vehicle: lt.vehicle || 'standard', phone: iv.phone, name: cust().name, callId: iv.callId });
         iv.step = 'menu'; return say('ivr', `Done. Booking ${b.id} is confirmed and we are finding your driver. You will receive a text message. Press 1 to check the status, or star to hang up.`);
       }
       iv.step = 'menu'; return say('ivr', menuText());
@@ -55,7 +55,7 @@
       if (!lt) return say('ivr', 'Quick rebooking is only available to registered riders with a previous trip. Press 3 to speak to an operator.');
       iv.step = 'confirm'; say('ivr', `Book a taxi from ${lt.pickup.label} to ${lt.dropoff.label}? Press 1 to confirm, or 2 to go back.`);
     } else if (k === '3' || k === '0') {
-      iv.step = 'queued'; E.queueCall(call(), cust() ? 'caller requested operator' : 'unknown caller'); say('ivr', 'Please hold while we connect you to the next available operator.');
+      iv.step = 'queued'; await E.queueCall(call(), cust() ? 'caller requested operator' : 'unknown caller'); say('ivr', 'Please hold while we connect you to the next available operator.');
     } else if (k === '9') say('ivr', menuText());
     else say('ivr', 'Sorry, that option is not available. ' + menuText());
   }
@@ -106,7 +106,6 @@
     const n = document.createElement('div'); n.className = 'sms-toast'; n.innerHTML = `<b>💬 SMS to ${U.esc(U.fmtPhone(m.to))}</b><span>${U.esc(m.text)}</span>`;
     U.$('#dev-ivr').appendChild(n); setTimeout(() => n.remove(), 7000);
   });
-  bus.on('reset', () => { iv.step = 'idle'; ui(); });
   bus.on('devshow', () => { ui(); draw(true); });
   ui();
 })(window.RO);

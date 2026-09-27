@@ -1,0 +1,40 @@
+{
+  "name": "rideops",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RideOps — taxi dispatch automation service (rider app, phone line, ops room, driver app)",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js",
+    "start:internal": "node server/index.js",
+    "cert:generate": "node scripts/generate-cert.js",
+    "db:push": "prisma db push && node prisma/seed.js",
+    "db:seed": "node prisma/seed.js",
+    "db:studio": "prisma studio",
+    "service:install": "node scripts/install-service.js",
+    "service:uninstall": "node scripts/uninstall-service.js",
+    "backup:run": "node -e \"require('dotenv').config();require('./server/lib/backup').runBackup().then(()=>process.exit(0))\"",
+    "backup:list": "node scripts/restore-backup.js --list",
+    "backup:restore": "node scripts/restore-backup.js",
+    "roads:build": "node tools/build-roads.js",
+    "test:smoke": "node tools/smoke-test.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "node-windows": "^1.0.0-beta.8",
+    "prisma": "^6.19.3",
+    "selfsigned": "^5.5.0"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "prisma@6.19.3": true
+  }
+}

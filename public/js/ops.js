@@ -1,4 +1,5 @@
-/* Operations room: master dispatch dashboard, exceptions, call queue + operator booking form, manual override, rules, VoIP. */
+/* Operations room: master dispatch dashboard, exceptions, call queue + operator booking form, manual override, rules, VoIP.
+   Shared live with every other ops user in the same company (and the rider/driver apps) — see public/js/net.js. */
 (function (RO) {
   'use strict';
   const C = RO.City, U = RO.util, V = RO.VEH, E = RO.E, bus = RO.bus, MV = RO.MapView;
@@ -54,9 +55,10 @@
     return `<div class="rules"><h4>Automation rule engine</h4><p class="mut">Score = ETA × w<sub>eta</sub> + traffic × w<sub>traffic</sub> + (5 − rating) × w<sub>rating</sub>. Lowest score gets the offer.</p>
       ${sl('wETA', 'Weight: pickup ETA', 0, 3, .1)}${sl('wTraffic', 'Weight: traffic on route', 0, 3, .1)}${sl('wRating', 'Weight: driver rating', 0, 3, .1)}${sl('maxEtaMin', 'Max pickup ETA', 5, 40, 1, ' min')}
       <h4>Timers</h4>${sl('offerSec', 'Driver offer countdown', 5, 30, 1, ' s')}${sl('unassignedSec', 'Unassigned alert after', 20, 180, 5, ' s')}${sl('leadMin', 'Release scheduled rides', 2, 30, 1, ' min before')}
-      <h4>Modes</h4>${ck('autoDispatch', 'Auto-dispatch (off = operators assign manually)')}${ck('favorHuman', 'Demo bias: favour the Driver-app vehicle (D07)')}
+      <h4>Modes</h4>${ck('autoDispatch', 'Auto-dispatch (off = operators assign manually)')}${ck('favorHuman', 'Demo bias: favour driver-app vehicles')}
       <h4>Simulation</h4>${ck('demandOn', 'Generate background demand & calls')}${sl('demandEvery', 'New booking every', 8, 90, 1, ' s')}${sl('botCancelPct', 'Driver cancel rate', 0, 30, 1, '%')}
-      <div class="btns"><button class="btn" data-act="jam">🚧 Trigger traffic incident</button><button class="btn" data-act="spawn">➕ Spawn booking</button></div></div>`;
+      <div class="btns"><button class="btn" data-act="jam">🚧 Trigger traffic incident</button><button class="btn" data-act="spawn">➕ Spawn booking</button></div>
+      <p class="mut">Changes here apply to every ops user watching this company, immediately.</p></div>`;
   }
   function callsShell() {
     return `<div class="sec"><div class="sec-h"><b>Call queue</b><button class="btn sm" data-act="simcall">+ Simulate inbound call</button></div><div id="call-queue"></div></div>
@@ -162,6 +164,9 @@
     if (O.tab === 'calls') { p.innerHTML = callsShell(); fillForm(); }
     else if (O.tab === 'rules') p.innerHTML = rulesHTML(); else refreshPane();
   }
+  // Note: 'rules' isn't refreshed here on every tick/change (only when its tab is (re)opened, via renderPane
+  // above) — its inputs hold direct DOM state (mid-drag slider position) that a live re-render would fight with;
+  // other ops viewers still get the change the moment they switch to Rules themselves.
   function refreshPane() {
     const p = pane();
     if (O.tab === 'bookings') U.setHTML(p, bookingsHTML()); else if (O.tab === 'alerts') U.setHTML(p, alertsHTML()); else if (O.tab === 'drivers') U.setHTML(p, driversHTML()); else if (O.tab === 'log') U.setHTML(p, logHTML());
@@ -172,7 +177,7 @@
     el.style.display = sos.length ? '' : 'none';
     U.setHTML(el, sos.map(a => `<div class="sos-row"><b>${U.esc(a.text)}</b><span><button class="btn sm" data-goto="${a.id}">Locate</button><button class="btn sm" data-sosdrv="${a.driverId}">📞 Call driver</button><button class="btn sm primary" data-ackid="${a.id}">Acknowledge</button></span></div>`).join(''));
     const v = st().voip, m = U.$('#voip-modal', root); m.style.display = v ? '' : 'none';
-    if (v) { const d = E.drv(v.driverId); U.setHTML(m, `<div class="voip"><div class="av">${U.initials(d.name)}</div><div><b>${v.state === 'ringing' ? (v.from === 'driver' ? '📞 Incoming: ' : '📞 Calling ') : '🎧 Connected: '}${d.id} ${U.esc(d.name)}</b><small>${v.state === 'active' ? 'VoIP headset · ' + U.mmss((Date.now() - v.t1) / 1000) : v.from === 'driver' ? 'Driver is calling the ops room' : 'Ringing…'}</small></div>${v.state === 'ringing' && v.from === 'driver' ? '<button class="btn sm primary" data-act="voipans">Answer</button>' : ''}<button class="btn sm danger" data-act="voipend">${v.state === 'active' ? 'Hang up' : 'Cancel'}</button></div>`); }
+    if (v) { const d = E.drv(v.driverId); if (d) U.setHTML(m, `<div class="voip"><div class="av">${U.initials(d.name)}</div><div><b>${v.state === 'ringing' ? (v.from === 'driver' ? '📞 Incoming: ' : '📞 Calling ') : '🎧 Connected: '}${d.id} ${U.esc(d.name)}</b><small>${v.state === 'active' ? 'VoIP headset · ' + U.mmss((Date.now() - v.t1) / 1000) : v.from === 'driver' ? 'Driver is calling the ops room' : 'Ringing…'}</small></div>${v.state === 'ringing' && v.from === 'driver' ? '<button class="btn sm primary" data-act="voipans">Answer</button>' : ''}<button class="btn sm danger" data-act="voipend">${v.state === 'active' ? 'Hang up' : 'Cancel'}</button></div>`); }
   }
   function refresh() {
     if (!root.offsetParent) return; // ops room is not the active workspace
@@ -190,49 +195,48 @@
     F.vehicle = req.vehicle || 'standard'; F.tags = (req.tags || []).slice();
   }
   function clearForm(keepCall) { Object.assign(F, { phone: keepCall ? F.phone : '', name: keepCall ? F.name : '', pu: { key: '' }, dr: { key: '' }, vehicle: 'standard', payment: 'card', when: 0, tags: [], note: '' }); if (!keepCall) F.callId = null; }
-  root.addEventListener('click', e => {
+  root.addEventListener('click', async e => {
     const t = e.target.closest('button,[data-bk],[data-drv]'); if (!t) return; const d = t.dataset;
     if (d.tab) { O.tab = d.tab; renderPane(); refresh(); return; }
     if (d.filter) { O.filter = d.filter; refresh(); return; }
     if (d.bk && !d.act) { select('booking', d.bk); if (t.tagName === 'BUTTON') { O.tab = 'bookings'; renderPane(); } return; }
     if (d.drv) return select('driver', d.drv);
     if (d.goto) { const a = st().alerts.find(x => x.id === d.goto); if (a) select(a.bookingId ? 'booking' : 'driver', a.bookingId || a.driverId); return; }
-    if (d.ackid) { E.ackAlert(d.ackid); return refresh(); }
+    if (d.ackid) return E.ackAlert(d.ackid);
     if (d.retry) return E.retryPayment(d.retry);
-    if (d.sosdrv) return E.voipStart(d.sosdrv, 'ops');
-    if (d.answer) { const c = E.answerCall(d.answer, 'Dana'); if (!c) return; F.callId = c.id; F.phone = c.phone; F.name = c.name || ''; prefill(c.request); O.tab = 'calls'; renderPane(); refresh(); return; }
-    if (d.endcall) { E.endCall(d.endcall); if (F.callId === d.endcall) { F.callId = null; } return refresh(); }
+    if (d.sosdrv) return E.voipStart(d.sosdrv);
+    if (d.answer) { const c = await E.answerCall(d.answer); if (!c) return; F.callId = c.id; F.phone = c.phone; F.name = c.name || ''; prefill(c.request); O.tab = 'calls'; renderPane(); refresh(); return; }
+    if (d.endcall) { await E.endCall(d.endcall); if (F.callId === d.endcall) F.callId = null; return; }
     if (d.ftag) { const i = F.tags.indexOf(d.ftag); i < 0 ? F.tags.push(d.ftag) : F.tags.splice(i, 1); if (d.ftag === 'wheelchair') { F.vehicle = i < 0 ? 'access' : 'standard'; U.$('#f-veh', root).value = F.vehicle; } t.classList.toggle('on'); return; }
     const b = selBooking(), dr = selDriver();
     switch (d.act) {
       case 'close': O.sel = null; O.dkey = ''; return refresh();
-      case 'assign': { const id = U.$('#dt-drv', root).value; if (b && E.assign(b.id, id, 'Dana')) refresh(); return; }
-      case 'cancel': if (b) E.cancelBooking(b.id, 'operator'); return;
-      case 'dispatch': if (b) E.dispatchNow(b.id); return;
-      case 'calldrv': E.voipStart((b && b.driverId) || (dr && dr.id), 'ops'); return;
+      case 'assign': { const id = U.$('#dt-drv', root).value; if (b) await E.assign(b.id, id); return; }
+      case 'cancel': if (b) await E.cancelBooking(b.id); return;
+      case 'dispatch': if (b) await E.dispatchNow(b.id); return;
+      case 'calldrv': return E.voipStart((b && b.driverId) || (dr && dr.id));
       case 'voipend': return E.voipEnd(); case 'voipans': return E.voipAnswer();
       case 'jam': return E.addJam(); case 'spawn': return E.spawnDemand(); case 'simcall': return E.simInboundCall();
       case 'pickpu': O.pick = O.pick === 'pu' ? null : 'pu'; return refresh(); case 'pickdr': O.pick = O.pick === 'dr' ? null : 'dr'; return refresh();
       case 'clear': clearForm(false); return fillForm();
       case 'uselast': { const cu = st().customers[U.normPhone(F.phone)], lt = cu && cu.trips[0]; if (lt) { prefill({ pickup: lt.pickup, dropoff: lt.dropoff, vehicle: lt.vehicle }); fillForm(); } return; }
-      case 'endcall': if (F.callId) { E.endCall(F.callId); F.callId = null; clearForm(false); fillForm(); } return;
+      case 'endcall': if (F.callId) { const id = F.callId; F.callId = null; await E.endCall(id); clearForm(false); fillForm(); } return;
       case 'create': {
         const pu = fRes(F.pu), dof = fRes(F.dr); if (!pu || !dof) return flash('Choose pickup and drop-off first.');
-        const nb = E.createBooking({ source: 'ops', phone: U.normPhone(F.phone), name: F.name || 'Caller', pickup: pu, dropoff: dof, vehicle: F.vehicle, payment: F.payment, whenMin: F.when, tags: F.tags, note: F.note, operator: 'Dana', callId: F.callId });
-        const c = F.callId && st().calls.find(x => x.id === F.callId); if (c) c.bookingId = nb.id;
+        const nb = await E.createBooking({ phone: U.normPhone(F.phone), name: F.name || 'Caller', pickup: pu, dropoff: dof, vehicle: F.vehicle, payment: F.payment, whenMin: F.when, tags: F.tags, note: F.note, callId: F.callId });
         clearForm(true); fillForm(); flash(`Created ${nb.id}`); select('booking', nb.id); return;
       }
     }
   });
   root.addEventListener('input', e => {
     const t = e.target;
-    if (t.dataset.rule) { const v = +t.value; st().settings[t.dataset.rule] = v; RO.save(); const l = U.$('#v-' + t.dataset.rule, root); l.textContent = l.textContent.replace(/^[\d.]+/, v); }
+    if (t.dataset.rule) { const v = +t.value; E.updateSettings({ [t.dataset.rule]: v }); const l = U.$('#v-' + t.dataset.rule, root); l.textContent = l.textContent.replace(/^[\d.]+/, v); }
     else if (t.id === 'f-phone') { F.phone = t.value; const cu = st().customers[U.normPhone(t.value)]; if (cu && !F.name) { F.name = cu.name; U.$('#f-name', root).value = cu.name; } U.$('#f-pu', root).innerHTML = fOpts(F.pu, 'Pickup location'); U.$('#f-dr', root).innerHTML = fOpts(F.dr, 'Drop-off location'); caller(); }
     else if (t.id === 'f-name') F.name = t.value; else if (t.id === 'f-note') F.note = t.value;
   });
   root.addEventListener('change', e => {
     const t = e.target;
-    if (t.dataset.rulec) { st().settings[t.dataset.rulec] = t.checked; RO.save(); }
+    if (t.dataset.rulec) E.updateSettings({ [t.dataset.rulec]: t.checked });
     else if (t.id === 'f-pu') { F.pu = { key: t.value }; } else if (t.id === 'f-dr') { F.dr = { key: t.value }; }
     else if (t.id === 'f-veh') { F.vehicle = t.value; const i = F.tags.indexOf('wheelchair'); if (t.value === 'access' && i < 0) F.tags.push('wheelchair'); if (t.value !== 'access' && i >= 0) F.tags.splice(i, 1); fillForm(); }
     else if (t.id === 'f-pay') F.payment = t.value; else if (t.id === 'f-when') F.when = +t.value;
@@ -250,7 +254,6 @@
   U.$('#ops-fit').addEventListener('click', () => O.map.fullView());
   let lt = 0; bus.on('tick', () => { const t = performance.now(); if (t - lt > 250) { lt = t; refresh(); } });
   bus.on('change', () => { if (O.tab === 'calls') refreshPane(); else refresh(); });
-  bus.on('alert', refresh); bus.on('log', () => { if (O.tab === 'log') refreshPane(); }); bus.on('voip', banner);
-  bus.on('reset', () => { O.sel = null; O.dkey = ''; F.callId = null; clearForm(false); renderPane(); refresh(); });
+  bus.on('devshow', id => { if (id === 'ops') { renderPane(); refresh(); } });
   renderPane(); refresh();
 })(window.RO);
