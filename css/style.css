@@ -142,3 +142,25 @@ span.chip,.row .chip{font-weight:600;font-size:11px;padding:2px 8px}
   .sms-toast{top:10px}.hint{font-size:11px}
   .kpis{grid-template-columns:repeat(2,1fr)}.map-wrap{height:340px}.ops-side{height:520px}
 }
+/* ---- sign-in and per-role workspaces ---- */
+.login{position:fixed;inset:0;z-index:3000;background:radial-gradient(1200px 600px at 50% -10%,#1b2a4d,var(--bg));align-items:center;justify-content:center;padding:16px;overflow:auto}
+.login-card{width:100%;max-width:400px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px 22px;display:flex;flex-direction:column;gap:10px;text-align:center;box-shadow:0 20px 60px #0009}
+.login-card h2{margin:0}.login-card p{margin:0;color:var(--mut)}.login-card form{text-align:left;display:flex;flex-direction:column;gap:2px}.login-card .err{color:#fca5a5;font-size:12px;min-height:1.2em}
+.login-card a{color:var(--info);font-size:12.5px}.demo-accts{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.acct{display:flex;align-items:center;gap:10px;text-align:left;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px 10px}.acct:hover{border-color:var(--acc)}.acct>span{font-size:22px}.acct>div{flex:1;min-width:0}.acct code{font-size:11px;color:var(--acc);background:var(--inp);padding:2px 6px;border-radius:6px;white-space:nowrap}
+.who{display:none;align-items:center;gap:8px;font-weight:600;font-size:13px}body[data-role] .who{display:flex}
+body:not([data-role]) .layout,body:not([data-role]) .sim>*:not(.who){display:none}
+body:not([data-role=ops]) .ops-only{display:none!important}
+body[data-role=ops] .devices{display:none}body[data-role=ops] .layout{grid-template-columns:minmax(0,1fr)}
+body[data-role=client] #ops,body[data-role=driver] #ops{display:none}
+body[data-role=client] .layout,body[data-role=driver] .layout{grid-template-columns:minmax(0,430px);justify-content:center}
+body[data-role=client] [data-dev=driver],body[data-role=driver] .dev-tabs{display:none}
+@media (max-width:520px){.who #who{display:none}}
+
+/* sign-in tabs and client code flow */
+.lg-tabs{display:flex;gap:4px;background:var(--inp);padding:4px;border-radius:11px;border:1px solid var(--line)}
+.lg-tabs button{flex:1;background:transparent;border:0;border-radius:8px;padding:7px 4px;font-size:12.5px;color:var(--mut)}.lg-tabs button.on{background:var(--acc);color:#1a1400;font-weight:700}
+#lg-client form{text-align:left;display:flex;flex-direction:column;gap:6px}#lg-client small{text-align:center}#lg-client a{text-align:center}
+.sentto{text-align:center!important;margin:0}
+#lg-toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);width:min(380px,calc(100% - 24px));z-index:3100}
+#lg-toast .sms-toast{position:static;animation:slide .3s}

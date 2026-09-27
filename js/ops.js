@@ -175,6 +175,7 @@
     if (v) { const d = E.drv(v.driverId); U.setHTML(m, `<div class="voip"><div class="av">${U.initials(d.name)}</div><div><b>${v.state === 'ringing' ? (v.from === 'driver' ? '📞 Incoming: ' : '📞 Calling ') : '🎧 Connected: '}${d.id} ${U.esc(d.name)}</b><small>${v.state === 'active' ? 'VoIP headset · ' + U.mmss((Date.now() - v.t1) / 1000) : v.from === 'driver' ? 'Driver is calling the ops room' : 'Ringing…'}</small></div>${v.state === 'ringing' && v.from === 'driver' ? '<button class="btn sm primary" data-act="voipans">Answer</button>' : ''}<button class="btn sm danger" data-act="voipend">${v.state === 'active' ? 'Hang up' : 'Cancel'}</button></div>`); }
   }
   function refresh() {
+    if (!root.offsetParent) return; // ops room is not the active workspace
     kpis(); tabs(); refreshPane(); detail(); drawMap(); banner();
     root.classList.toggle('picking', !!O.pick);
     U.setText(U.$('#pick-hint', root), O.pick ? `Click the map to set the ${O.pick === 'pu' ? 'pickup' : 'drop-off'} location` : '');

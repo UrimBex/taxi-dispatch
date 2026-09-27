@@ -12,10 +12,11 @@
   <div class="brand"><span class="logo-sm">🚕</span><div><b>RideOps</b><small>Taxi dispatch automation · Prishtina · Obiliq · Fushë Kosovë</small></div></div>
   <div class="sim">
     <span class="clock" id="clock">08:15</span>
-    <label>Speed <select id="speed"><option value="1">1×</option><option value="6">6×</option><option value="12" selected>12×</option><option value="30">30×</option></select></label>
-    <button class="btn sm" id="pause">⏸ Pause</button>
-    <label class="chk"><input type="checkbox" id="demand" checked> Auto demand</label>
-    <button class="btn sm ghost" id="reset">↺ Reset</button>
+    <label class="ops-only">Speed <select id="speed"><option value="1">1×</option><option value="6">6×</option><option value="12" selected>12×</option><option value="30">30×</option></select></label>
+    <button class="btn sm ops-only" id="pause">⏸ Pause</button>
+    <label class="chk ops-only"><input type="checkbox" id="demand" checked> Auto demand</label>
+    <button class="btn sm ghost ops-only" id="reset">↺ Reset</button>
+    <span class="who"><span id="who"></span><button class="btn sm ghost" id="logout">Sign out</button></span>
   </div>
 </header>
 <main class="layout">
@@ -47,6 +48,36 @@
     </div>
   </section>
 </main>
+<div id="login" class="login" style="display:none">
+  <div id="lg-toast"></div>
+  <div class="login-card">
+    <div class="logo">🚕</div><h2>RideOps</h2><p>Sign in to open your workspace</p>
+    <div class="lg-tabs" id="lg-tabs"><button type="button" data-r="client" class="on">📱 Client</button><button type="button" data-r="driver">🚗 Driver</button><button type="button" data-r="ops">🎧 Ops room</button></div>
+    <div id="lg-client">
+      <form id="lg-f1" autocomplete="off">
+        <label>Phone number<input id="lg-phone" type="tel" placeholder="+383 44 000 000"></label>
+        <div class="err" id="lg-perr"></div>
+        <button class="btn primary" type="submit">Send code</button>
+        <small>We text you a 6-digit code. Demo: <a href="#" id="lg-demo">+383 44 111 222</a> is a returning rider with saved places; any other number registers a new rider.</small>
+      </form>
+      <form id="lg-f2" autocomplete="off" style="display:none">
+        <p class="sentto">We sent a 6-digit code to <b id="lg-sentto"></b></p>
+        <input id="lg-otp" inputmode="numeric" maxlength="6" placeholder="••••••" style="text-align:center;letter-spacing:.4em;font-size:22px">
+        <div class="err" id="lg-oerr"></div>
+        <button class="btn primary" type="submit">Verify and sign in</button>
+        <a href="#" id="lg-back">Use a different number</a>
+      </form>
+    </div>
+    <form id="login-form" autocomplete="off" style="display:none">
+      <label>Username<input id="lg-user" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+      <label>Password<input id="lg-pass" type="password" placeholder="password"></label>
+      <div class="err" id="lg-err"></div>
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+    <div class="demo-accts" id="demo-accts"></div>
+    <small>Prototype: it runs in your browser, so the driver and ops logins are demo-only, not real security.</small>
+  </div>
+</div>
 <script src="vendor/leaflet.js"></script>
 <script src="js/roads.js"></script>
 <script src="js/city.js"></script>

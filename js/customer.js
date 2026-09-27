@@ -95,7 +95,7 @@
       if (U.$('#c-otp', root).value.trim() !== me.otp) { me.err = 'Wrong code, try again'; return render(); }
       const s = st(); if (!s.customers[me.phone]) { s.customers[me.phone] = { phone: me.phone, name: 'Rider ' + me.phone.slice(-3), favorites: [], trips: [] }; RO.save(); }
       me.screen = 'main'; me.err = ''; render();
-    } else if (d.act === 'logout') { me.screen = 'login'; me.phone = null; me.bid = null; me.pu = { key: 'gps' }; me.dr = { key: '' }; render(); }
+    } else if (d.act === 'logout') { RO.auth ? RO.auth.logout() : RO.client.signOut(); }
     else if (d.tab) { me.tab = d.tab; render(); }
     else if (d.pin) { me.pin = d.pin; refresh(true); }
     else if (d.veh) { me.vehicle = d.veh; if (d.veh === 'access' && !me.tags.includes('wheelchair')) me.tags.push('wheelchair'); if (d.veh !== 'access') me.tags = me.tags.filter(x => x !== 'wheelchair'); refresh(true); }
@@ -189,5 +189,14 @@
     U.$('#dev-customer').appendChild(n); setTimeout(() => n.remove(), 7000);
   });
   bus.on('devshow', id => { if (id === 'customer') { me.shown = ''; render(); } });
+  /* used by the role sign-in: the client account arrives already signed in as the returning rider, and picks up any trip in progress */
+  RO.client = {
+    signIn(phone) {
+      Object.assign(me, { phone, screen: 'main', tab: 'book', err: '', pu: { key: 'gps' }, dr: { key: '' }, vehicle: 'standard', payment: 'card', when: 0, tags: [] });
+      const b = st().bookings.slice().reverse().find(x => x.phone === phone && !['completed', 'cancelled'].includes(x.status)); me.bid = b ? b.id : null;
+      render();
+    },
+    signOut() { Object.assign(me, { phone: null, screen: 'login', bid: null, err: '', pu: { key: 'gps' }, dr: { key: '' } }); render(); }
+  };
   render();
 })(window.RO);

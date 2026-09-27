@@ -14,9 +14,26 @@ python -m http.server 5180
 
 Open http://localhost:5180 (opening `index.html` directly from disk also works in a normal browser).
 
+## Demo accounts (three roles)
+
+| Role | Sign-in | Sees |
+|---|---|---|
+| Client | phone number + text-message code (demo rider: `+383 44 111 222`; any other number registers a new rider) | Rider app (returning rider Arta has saved places and past trips) + the phone line (IVR) |
+| Driver | username `driver` / password `driver123` | Driver app only, as vehicle D07 (Ben Krasniqi) |
+| Ops room | username `ops` / password `ops123` | Dispatch dashboard, alerts, call queue + operator desk, rules, simulation controls |
+
+The driver and ops logins are demo-only: the whole thing runs in your browser with no backend, so there is no real security.
+The simulated city lives in the page, so **within one tab** you can sign out and back in as another role and see the
+same world (e.g. book as the client, sign in as ops to see the booking, sign in as the driver to take the job).
+A page reload restarts the simulation, and different browsers/devices each run their own separate one.
+
 ## 2-minute demo script
 
-1. **Customer app** – tap *Send code*; the SMS with the OTP pops up in the phone. Verify, pick a destination
+(The steps below use all roles; sign out and switch roles between them.)
+
+
+1. **Client** – on the sign-in screen enter the phone number and tap *Send code*; the text message with the code
+   pops up on screen. Verify, pick a destination
    (dropdown or tap the map), compare Standard/Comfort/XL/Wheelchair fares + ETAs, **Book**.
 2. **Ops room** (right) – the booking appears as a pulsing pin, dispatch offers it to the best-scored driver,
    the driver accepts, the car drives to the pickup on the live map. Watch *Bookings*, *Log* and the KPIs.
