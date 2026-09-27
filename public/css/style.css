@@ -164,3 +164,6 @@ body[data-role=client] [data-dev=driver],body[data-role=driver] .dev-tabs{displa
 .sentto{text-align:center!important;margin:0}
 #lg-toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);width:min(380px,calc(100% - 24px));z-index:3100}
 #lg-toast .sms-toast{position:static;animation:slide .3s}
+/* live-connection indicator (public/js/main.js toggles body.offline) */
+body.offline .top{background:#3a1010}
+body.offline .clock:after{content:" ⚠ reconnecting…";color:#fca5a5;font-size:11px;font-family:system-ui}

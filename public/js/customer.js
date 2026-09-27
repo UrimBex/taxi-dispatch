@@ -1,13 +1,17 @@
-/* Customer mobile app: SMS-OTP login, map pins, fare estimates, booking, live tracking, trips, saved places. */
+/* Rider app: map pins, fare estimates, booking, live tracking, trips, saved places. Sign-in itself (phone + code)
+   lives in main.js against the real server now; this module starts already signed in — see RO.client.signIn. */
 (function (RO) {
   'use strict';
   const C = RO.City, U = RO.util, V = RO.VEH, E = RO.E, bus = RO.bus, MV = RO.MapView;
   const root = U.$('#cust'), st = () => RO.state;
   const me = {
-    phone: null, screen: 'login', tab: 'book', otp: null, phoneDraft: '+383 44 111 222', err: '', pu: { key: 'gps' }, dr: { key: '' }, pin: 'dropoff',
-    vehicle: 'standard', payment: 'card', when: 0, tags: [], bid: null, gps: { x: 100 * U.ri(3, 8), y: 100 * U.ri(2, 6) }, map: null, shown: ''
+    phone: null, name: '', tab: 'book', pu: { key: 'gps' }, dr: { key: '' }, pin: 'dropoff',
+    vehicle: 'standard', payment: 'card', when: 0, tags: [], bid: null, needsBidPickup: false,
+    gps: { x: 100 * U.ri(3, 8), y: 100 * U.ri(2, 6) }, map: null, shown: ''
   };
-  const cust = () => st().customers[me.phone];
+  // Falls back to a minimal stand-in for the brief moment between signing in and the first server snapshot
+  // arriving — st().customers[me.phone] only exists once that push lands.
+  const cust = () => st().customers[me.phone] || { phone: me.phone, name: me.name, favorites: [], trips: [] };
   const booking = () => me.bid && E.bk(me.bid);
 
   function places() {
@@ -31,24 +35,14 @@
   /* ---------- shells ---------- */
   function render() {
     me.map = null; me.shown = '';
-    if (me.screen === 'login') {
-      root.innerHTML = `<div class="c-login"><div class="logo">🚕</div><h2>RideOps</h2><p>Get a taxi in minutes.<br>Sign in with your phone number.</p>
-        <input id="c-phone" type="tel" value="${U.esc(me.phoneDraft)}" placeholder="+383 44 000 000"><div class="err">${U.esc(me.err)}</div>
-        <button class="btn primary" data-act="send">Send code</button>
-        <small>Demo: <a href="#" data-act="demo">+383 44 111 222</a> is a returning rider with saved places. Any other number registers a new rider.</small></div>`;
-    } else if (me.screen === 'otp') {
-      root.innerHTML = `<div class="c-login"><div class="logo">💬</div><h2>Enter the code</h2><p>We sent a 6-digit code to<br><b>${U.esc(U.fmtPhone(me.phone))}</b></p>
-        <input id="c-otp" inputmode="numeric" maxlength="6" placeholder="••••••" style="text-align:center;letter-spacing:.4em;font-size:22px"><div class="err">${U.esc(me.err)}</div>
-        <button class="btn primary" data-act="verify">Verify</button><small><a href="#" data-act="back">Use a different number</a></small></div>`;
-    } else {
-      const showTrack = me.tab === 'book' && booking() && !['done'].includes(me.tabState);
-      root.innerHTML = `<div class="c-top"><div><small>Hello,</small><b>${U.esc(cust().name)}</b></div><button class="ghost" data-act="logout" title="Sign out">⎋</button></div>` +
-        `<div class="c-body">${me.tab === 'book' ? (showTrack ? trackShell() : bookShell()) : me.tab === 'trips' ? tripsHTML() : placesHTML()}</div>` +
-        `<nav class="c-nav">${[['book', '🚕', 'Ride'], ['trips', '🕒', 'Trips'], ['places', '⭐', 'Places']].map(([k, i, l]) => `<button class="${me.tab === k ? 'on' : ''}" data-tab="${k}"><span>${i}</span>${l}</button>`).join('')}</nav>`;
-      me.shown = me.tab === 'book' ? (showTrack ? 'track' : 'book') : me.tab;
-      if (me.shown === 'book') { syncSelects(); }
-      if (me.shown === 'book' || me.shown === 'track') me.map = new MV(U.$('#c-map', root), { labels: false, zoom: false, slot: 'cust', onTap: me.shown === 'book' ? onTap : null });
-    }
+    if (!me.phone) { root.innerHTML = ''; return; }
+    const showTrack = me.tab === 'book' && !!booking();
+    root.innerHTML = `<div class="c-top"><div><small>Hello,</small><b>${U.esc(cust().name)}</b></div><button class="ghost" data-act="logout" title="Sign out">⎋</button></div>` +
+      `<div class="c-body">${me.tab === 'book' ? (showTrack ? trackShell() : bookShell()) : me.tab === 'trips' ? tripsHTML() : placesHTML()}</div>` +
+      `<nav class="c-nav">${[['book', '🚕', 'Ride'], ['trips', '🕒', 'Trips'], ['places', '⭐', 'Places']].map(([k, i, l]) => `<button class="${me.tab === k ? 'on' : ''}" data-tab="${k}"><span>${i}</span>${l}</button>`).join('')}</nav>`;
+    me.shown = me.tab === 'book' ? (showTrack ? 'track' : 'book') : me.tab;
+    if (me.shown === 'book') syncSelects();
+    if (me.shown === 'book' || me.shown === 'track') me.map = new MV(U.$('#c-map', root), { labels: false, zoom: false, slot: 'cust', onTap: me.shown === 'book' ? onTap : null });
     refresh(true);
   }
   function bookShell() {
@@ -81,38 +75,30 @@
     const sel = me.pin === 'pickup' ? me.pu : me.dr; sel.key = 'pin'; sel.pt = { x: p.x, y: p.y, label: C.label(p) };
     if (me.pin === 'pickup') me.pin = 'dropoff'; syncSelects(); refresh(true);
   }
-  root.addEventListener('click', e => {
+  root.addEventListener('click', async e => {
     const t = e.target.closest('button,a'); if (!t) return; const d = t.dataset;
     if (t.tagName === 'A') e.preventDefault();
-    if (d.act === 'demo') { U.$('#c-phone', root).value = '+383 44 111 222'; return; }
-    if (d.act === 'send') {
-      const p = U.normPhone(U.$('#c-phone', root).value); me.phoneDraft = U.$('#c-phone', root).value;
-      if (p.length < 9) { me.err = 'Enter a valid phone number'; return render(); }
-      me.phone = p; me.otp = String(U.ri(100000, 999999)); me.err = ''; me.screen = 'otp'; render();
-      setTimeout(() => E.sms(p, `RideOps: your verification code is ${me.otp}. Do not share it.`), 700);
-    } else if (d.act === 'back') { me.screen = 'login'; render(); }
-    else if (d.act === 'verify') {
-      if (U.$('#c-otp', root).value.trim() !== me.otp) { me.err = 'Wrong code, try again'; return render(); }
-      const s = st(); if (!s.customers[me.phone]) { s.customers[me.phone] = { phone: me.phone, name: 'Rider ' + me.phone.slice(-3), favorites: [], trips: [] }; RO.save(); }
-      me.screen = 'main'; me.err = ''; render();
-    } else if (d.act === 'logout') { RO.auth ? RO.auth.logout() : RO.client.signOut(); }
-    else if (d.tab) { me.tab = d.tab; render(); }
-    else if (d.pin) { me.pin = d.pin; refresh(true); }
-    else if (d.veh) { me.vehicle = d.veh; if (d.veh === 'access' && !me.tags.includes('wheelchair')) me.tags.push('wheelchair'); if (d.veh !== 'access') me.tags = me.tags.filter(x => x !== 'wheelchair'); refresh(true); }
-    else if (d.tag) { const i = me.tags.indexOf(d.tag); i < 0 ? me.tags.push(d.tag) : me.tags.splice(i, 1); if (d.tag === 'wheelchair') me.vehicle = i < 0 ? 'access' : 'standard'; refresh(true); }
-    else if (d.act === 'book') {
+    if (d.act === 'logout') return RO.auth.logout();
+    if (d.tab) { me.tab = d.tab; return render(); }
+    if (d.pin) { me.pin = d.pin; return refresh(true); }
+    if (d.veh) { me.vehicle = d.veh; if (d.veh === 'access' && !me.tags.includes('wheelchair')) me.tags.push('wheelchair'); if (d.veh !== 'access') me.tags = me.tags.filter(x => x !== 'wheelchair'); return refresh(true); }
+    if (d.tag) { const i = me.tags.indexOf(d.tag); i < 0 ? me.tags.push(d.tag) : me.tags.splice(i, 1); if (d.tag === 'wheelchair') me.vehicle = i < 0 ? 'access' : 'standard'; return refresh(true); }
+    if (d.act === 'book') {
       const pu = resolve(me.pu), dr = resolve(me.dr); if (!pu || !dr) return;
-      const b = E.createBooking({ source: 'app', phone: me.phone, name: cust().name, pickup: pu, dropoff: dr, vehicle: me.vehicle, payment: me.payment, whenMin: me.when, tags: me.tags });
-      me.bid = b.id; me.tabState = ''; me.tags = []; render();
-    } else if (d.act === 'cancel') { E.cancelBooking(me.bid, 'rider'); refresh(true); }
-    else if (d.act === 'done') { me.bid = null; me.dr = { key: '' }; me.vehicle = 'standard'; render(); }
-    else if (d.rate) { const b = booking(); if (b) { b.rating = +d.rate; refresh(true); } }
-    else if (d.rebook != null) { const x = cust().trips[+d.rebook]; me.pu = { key: 'pin', pt: { ...x.pickup } }; me.dr = { key: 'pin', pt: { ...x.dropoff } }; me.vehicle = x.vehicle; me.tab = 'book'; render(); }
-    else if (d.delfav != null) { cust().favorites.splice(+d.delfav, 1); RO.save(); render(); }
-    else if (d.act === 'addfav') {
+      const b = await E.createBooking({ pickup: pu, dropoff: dr, vehicle: me.vehicle, payment: me.payment, whenMin: me.when, tags: me.tags });
+      me.bid = b.id; me.tags = []; return render();
+    }
+    if (d.act === 'cancel') { await E.cancelBooking(me.bid); return refresh(true); }
+    if (d.act === 'done') { me.bid = null; me.dr = { key: '' }; me.vehicle = 'standard'; return render(); }
+    if (d.rate) { const b = booking(); if (b) { await E.rateTrip(b.id, +d.rate); refresh(true); } return; }
+    if (d.rebook != null) { const x = cust().trips[+d.rebook]; me.pu = { key: 'pin', pt: { ...x.pickup } }; me.dr = { key: 'pin', pt: { ...x.dropoff } }; me.vehicle = x.vehicle; me.tab = 'book'; return render(); }
+    if (d.delfav != null) { const list = cust().favorites.slice(); list.splice(+d.delfav, 1); await E.saveFavorites(list); return render(); }
+    if (d.act === 'addfav') {
       const name = U.$('#c-favname', root).value.trim(), sel = U.$('#c-favsrc', root).value === 'pu' ? me.pu : me.dr, p = resolve(sel);
-      if (name && p) { cust().favorites.push({ name, x: p.x, y: p.y }); RO.save(); render(); }
-    } else if (d.act === 'callDriver') E.log(`📞 Masked call: rider ${U.fmtPhone(me.phone)} → driver (${me.bid})`, 'ops');
+      if (name && p) { await E.saveFavorites(cust().favorites.concat([{ name, x: p.x, y: p.y }])); render(); }
+      return;
+    }
+    if (d.act === 'callDriver') E.logEvent(`📞 Masked call: rider ${U.fmtPhone(me.phone)} → driver (${me.bid})`);
   });
   root.addEventListener('change', e => {
     const t = e.target;
@@ -143,12 +129,12 @@
     return '';
   }
   function refresh(force) {
-    if (me.screen !== 'main' || !root.offsetParent) return;
+    if (!me.phone || !root.offsetParent) return;
     if (me.shown === 'book' && booking()) return render();
     if (me.shown === 'book') {
       const pu = resolve(me.pu), dr = resolve(me.dr);
       U.$$('#c-pin button', root).forEach(b => b.classList.toggle('on', b.dataset.pin === me.pin));
-      U.$$('#c-tags', root); U.setHTML(U.$('#c-tags', root), Object.entries(RO.TAGS).map(([k, l]) => `<button class="chip ${me.tags.includes(k) ? 'on' : ''}" data-tag="${k}">${l}</button>`).join(''));
+      U.setHTML(U.$('#c-tags', root), Object.entries(RO.TAGS).map(([k, l]) => `<button class="chip ${me.tags.includes(k) ? 'on' : ''}" data-tag="${k}">${l}</button>`).join(''));
       const t = Date.now();
       if (force || t - lastEst > 900) {
         lastEst = t; const ests = {};
@@ -171,8 +157,7 @@
       const b = booking(); if (!b) return;
       U.setHTML(U.$('#c-track', root), trackHTML(b));
       const d = E.drv(b.driverId); let under = '', over = '';
-      if (['enroute', 'arrived'].includes(b.status) && d) under = MV.line([d.pos].concat(d.path), 'm-route');
-      else if (b.status === 'ontrip' && d) under = MV.line([d.pos].concat(d.path), 'm-route');
+      if (['enroute', 'arrived', 'ontrip'].includes(b.status) && d) under = MV.line([d.pos].concat(d.path), 'm-route');
       else under = MV.line(C.route(b.pickup, b.dropoff), 'm-route dim');
       if (b.status !== 'ontrip') over += MV.pin(b.pickup, { color: '#22c55e', s: 1.5 }); over += MV.pin(b.dropoff, { color: '#ef4444', s: 1.5 });
       if (d && ['enroute', 'arrived', 'ontrip'].includes(b.status)) over += MV.car(d, { s: 1.7 });
@@ -180,23 +165,29 @@
       me.map.fit([b.pickup, b.dropoff].concat(d ? [d.pos] : []), { minW: 500, pad: 100 });
     }
   }
-  let lt = 0; bus.on('tick', () => { const t = performance.now(); if (t - lt > 250) { lt = t; refresh(); } });
+  let lt = 0;
+  bus.on('tick', () => {
+    if (me.needsBidPickup && me.phone) { // resolved on the first real snapshot after signing in, not at sign-in time — see RO.client.signIn
+      me.needsBidPickup = false;
+      const b = st().bookings.slice().reverse().find(x => x.phone === me.phone && !['completed', 'cancelled'].includes(x.status));
+      me.bid = b ? b.id : null; render(); return;
+    }
+    const t = performance.now(); if (t - lt > 250) { lt = t; refresh(); }
+  });
   bus.on('change', () => refresh(false));
-  bus.on('reset', () => { me.bid = null; if (me.screen === 'main') render(); });
   bus.on('sms', m => {
     if (m.to !== me.phone) return;
     const n = document.createElement('div'); n.className = 'sms-toast'; n.innerHTML = `<b>💬 Messages · RideOps</b><span>${U.esc(m.text)}</span>`;
     U.$('#dev-customer').appendChild(n); setTimeout(() => n.remove(), 7000);
   });
   bus.on('devshow', id => { if (id === 'customer') { me.shown = ''; render(); } });
-  /* used by the role sign-in: the client account arrives already signed in as the returning rider, and picks up any trip in progress */
+  /* used by the role sign-in (main.js): the client account arrives already signed in as the rider it belongs to */
   RO.client = {
-    signIn(phone) {
-      Object.assign(me, { phone, screen: 'main', tab: 'book', err: '', pu: { key: 'gps' }, dr: { key: '' }, vehicle: 'standard', payment: 'card', when: 0, tags: [] });
-      const b = st().bookings.slice().reverse().find(x => x.phone === phone && !['completed', 'cancelled'].includes(x.status)); me.bid = b ? b.id : null;
+    signIn(phone, name) {
+      Object.assign(me, { phone, name: name || '', tab: 'book', pu: { key: 'gps' }, dr: { key: '' }, vehicle: 'standard', payment: 'card', when: 0, tags: [], bid: null, needsBidPickup: true });
       render();
     },
-    signOut() { Object.assign(me, { phone: null, screen: 'login', bid: null, err: '', pu: { key: 'gps' }, dr: { key: '' } }); render(); }
+    signOut() { Object.assign(me, { phone: null, name: '', bid: null, needsBidPickup: false, pu: { key: 'gps' }, dr: { key: '' } }); render(); }
   };
   render();
 })(window.RO);

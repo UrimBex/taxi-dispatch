@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPERUSER
+  OPS
+  DRIVER
+  CLIENT
+}
+
+// A taxi company using this install. One install can serve several
+// companies (mirrors the bar-SaaS pattern: a SUPERUSER provisions each
+// one), but the common case — and the only one the seed script sets up —
+// is a single company, the client this install is delivered to.
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  fleetSize Int      @default(14) // roster size for this company's simulated fleet (see server/world.js)
+  createdAt DateTime @default(now())
+
+  users   User[]
+  drivers DriverSlot[]
+  trips   Trip[]
+}
+
+// SUPERUSER: platform admin, no company. OPS / DRIVER: staff of one
+// company, username + password. CLIENT: a rider, phone number + SMS code;
+// phone is encrypted at rest (see server/lib/crypto.js) — phoneHash is a
+// deterministic HMAC of the same number, used only to look the row up by
+// phone during login without ever storing or querying the plaintext.
+model User {
+  id           String   @id @default(cuid())
+  role         Role
+  companyId    String?
+  company      Company? @relation(fields: [companyId], references: [id])
+  name         String
+  username     String?  @unique
+  passwordHash String?
+  phone        String?
+  phoneHash    String?  @unique
+  favorites    String? // CLIENT: JSON array of saved places [{name,x,y}]
+  createdAt    DateTime @default(now())
+
+  driverSlot DriverSlot?
+  sessions   Session[]
+  trips      Trip[]
+}
+
+// Binds a DRIVER user to one seat in their company's simulated fleet
+// (server/store.js generates a fixed-size roster per company; slot 0..N-1
+// indexes into it). The bound vehicle is driver-controlled in the live
+// simulation instead of running on autopilot for as long as this row
+// exists; unbound slots are simulated (bot) drivers.
+model DriverSlot {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id])
+  slot      Int
+  userId    String? @unique
+  user      User?   @relation(fields: [userId], references: [id])
+
+  @@unique([companyId, slot])
+}
+
+// Archive of completed/cancelled trips, written once a booking leaves the
+// live simulation (see server/world.js's 'completed' listener) — the live
+// in-progress state (driver positions, offers, active bookings) is kept
+// in memory only and never hits the database; see the README for why.
+model Trip {
+  id            String    @id @default(cuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id])
+  bookingRef    String // the engine's own booking id (e.g. RB-1042), for cross-referencing logs
+  customerId    String?
+  customer      User?     @relation(fields: [customerId], references: [id])
+  customerPhone String? // denormalised + encrypted, so history still reads even if the account is later deleted
+  customerName  String?
+  driverName    String?
+  pickup        String
+  dropoff       String
+  vehicle       String
+  payment       String
+  source        String
+  fare          Float?
+  distanceKm    Float?
+  status        String // completed | cancelled
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+}
+
+// A logged-in session. The cookie holds only this row's id — every
+// request looks the session up here, so signing someone out (or an
+// account being deleted) takes effect immediately, unlike a self-contained
+// token that stays valid until it expires on its own.
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
