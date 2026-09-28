@@ -60,7 +60,10 @@ class World {
     this.RO.bus.on('change', () => this._scheduleBroadcast());
     this.RO.bus.on('alert', () => this._scheduleBroadcast());
     this.RO.bus.on('voip', () => this._scheduleBroadcast());
-    this.RO.bus.on('reset', () => { this.state = this.RO.state; this.E = this.RO.E; });
+    this.RO.bus.on('reset', () => {
+      this.state = this.RO.state; this.E = this.RO.E;
+      this.loadAccounts().catch(err => console.error('[world] re-applying fleet/accounts after reset failed:', err));
+    });
     this.RO.bus.on('sms', m => this.smsListeners.forEach(fn => fn(m)));
     this.RO.bus.on('driver-msg', text => this.msgListeners.forEach(fn => fn(text)));
     this.RO.bus.on('completed', ({ driverId, bid }) => {
@@ -99,16 +102,27 @@ class World {
     }).catch(err => console.error('[world] Trip.create failed:', err));
   }
 
-  /** Binds DRIVER users to their fleet seat, and loads this company's registered CLIENTs + trip history into the live state. */
+  /** Applies each company's customised fleet roster (name/vehicle/model + bound driver login) and loads its
+      registered CLIENTs + trip history into the live state. Re-run after a reset too, not just at creation —
+      RO.newState() rebuilds the roster from the built-in demo defaults, so any customisation has to be re-applied. */
   async loadAccounts() {
     const [slots, clients] = await Promise.all([
-      prisma.driverSlot.findMany({ where: { companyId: this.companyId, userId: { not: null } }, include: { user: true } }),
+      prisma.driverSlot.findMany({ where: { companyId: this.companyId }, include: { user: true } }), // every customised seat, not just ones with a login
       prisma.user.findMany({ where: { companyId: this.companyId, role: 'CLIENT' } })
     ]);
     for (const slot of slots) {
       const d = this.state.drivers[slot.slot];
-      if (d) { d.human = true; d.userId = slot.userId; }
+      if (!d) continue;
+      if (slot.name) d.name = slot.name;
+      if (slot.vehicleType) d.vehicle = slot.vehicleType;
+      if (slot.model) d.model = slot.model;
+      if (slot.userId) { d.human = true; d.userId = slot.userId; }
     }
+    // Once a company has customised ANY seat, the ones it never got to sit out of service instead of showing
+    // phantom demo drivers roaming the map — a company that hasn't touched its roster yet still runs the full
+    // built-in demo fleet (so a fresh install has something to look at before anyone's set up real drivers).
+    const usedSlots = new Set(slots.filter(s => s.name || s.userId).map(s => s.slot));
+    if (usedSlots.size > 0) this.state.drivers.forEach((d, i) => { if (!usedSlots.has(i)) d.online = false; });
     for (const u of clients) {
       if (!u.phone) continue;
       const phone = decryptField(u.phone);

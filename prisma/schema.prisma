@@ -53,18 +53,25 @@ model User {
   trips      Trip[]
 }
 
-// Binds a DRIVER user to one seat in their company's simulated fleet
-// (server/store.js generates a fixed-size roster per company; slot 0..N-1
-// indexes into it). The bound vehicle is driver-controlled in the live
-// simulation instead of running on autopilot for as long as this row
-// exists; unbound slots are simulated (bot) drivers.
+// One seat (0..fleetSize-1) in a company's simulated fleet. A row only
+// needs to exist once a seat is customised — an untouched seat still runs
+// under the built-in demo roster (see public/js/store.js) until it is.
+// name/vehicleType/model override that seat's display name and vehicle
+// (vehicleType must be one of RO.VEH's keys: standard/comfort/xl/access —
+// validated in server/routes/admin.js, not here). Binding a DRIVER user
+// makes that seat driver-controlled in the live simulation instead of
+// running on autopilot for as long as userId is set; clearing it (or
+// deleting the user) returns the seat to autopilot under its current name.
 model DriverSlot {
-  id        String  @id @default(cuid())
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-  slot      Int
-  userId    String? @unique
-  user      User?   @relation(fields: [userId], references: [id])
+  id          String  @id @default(cuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id])
+  slot        Int
+  name        String?
+  vehicleType String?
+  model       String?
+  userId      String? @unique
+  user        User?   @relation(fields: [userId], references: [id])
 
   @@unique([companyId, slot])
 }

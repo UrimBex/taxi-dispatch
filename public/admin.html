@@ -17,6 +17,8 @@
   .row{display:flex;justify-content:space-between;align-items:center;gap:10px}
   .msg{font-size:12.5px;min-height:1.2em}.msg.ok{color:var(--ok)}.msg.bad{color:#fca5a5}
   select{width:auto}
+  textarea{background:var(--inp);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;color:inherit;font:12.5px ui-monospace,Consolas,monospace;resize:vertical}
+  td.mut{color:var(--mut)}
 </style>
 </head>
 <body>
@@ -40,17 +42,22 @@
     <div class="msg" id="msg-company"></div>
   </div>
 
-  <h2>Drivers</h2>
+  <h2>Fleet roster</h2>
   <div class="card">
-    <form id="f-driver">
-      <label>Company<select name="companyId" id="f-driver-company"></select></label>
-      <label>Driver name<input name="name" required placeholder="e.g. Arben Kelmendi"></label>
-      <label>Username<input name="username" required placeholder="e.g. arben"></label>
-      <label>Password<input name="password" type="password" required placeholder="min 8 characters"></label>
-      <button class="btn primary" type="submit">Add driver login</button>
-    </form>
-    <div class="msg" id="msg-driver"></div>
-    <small>Binds the login to the next free seat in that company's simulated fleet (up to its fleet size).</small>
+    <div class="row"><b>Company</b><select id="f-driver-company"></select></div>
+    <table id="fleet"><thead><tr><th>Seat</th><th>Name</th><th>Vehicle</th><th>Model</th><th>Status</th><th>Login</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="card">
+    <b>Replace the roster</b>
+    <p class="mut">Paste one driver per line: <code>Name, username, password, vehicle</code> — username/password
+      (a driver login) and vehicle (<code>standard</code>/<code>comfort</code>/<code>xl</code>/<code>access</code>,
+      defaults to standard) are both optional, e.g. a name on its own is fine if that driver doesn't have a login
+      yet. <b>This replaces every current driver</b> on the selected company: seats not covered by the new list
+      are taken out of service, and any old login on a seat you reuse is deleted.</p>
+    <textarea id="f-roster" rows="6" placeholder="Arben Kelmendi, arben, temp-pass-123, standard&#10;Teuta Sadiku, teuta, temp-pass-456, comfort&#10;Faton Bytyqi, faton, temp-pass-789, access"></textarea>
+    <div class="btns"><button class="btn danger" id="btn-replace-roster">Replace roster</button></div>
+    <div class="msg" id="msg-roster"></div>
   </div>
 
   <script>
@@ -66,12 +73,34 @@
 
     async function loadCompanies() {
       const companies = await api('/api/admin/companies');
-      $('#companies tbody').innerHTML = companies.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.slug)}</td><td>${c._count.users}</td><td>${c._count.drivers}</td><td>${c._count.trips}</td><td><button class="btn sm" data-pick="${c.id}">Add driver here</button></td></tr>`).join('') || '<tr><td colspan="6" class="mut">No companies yet — create one below.</td></tr>';
-      $('#f-driver-company').innerHTML = companies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+      $('#companies tbody').innerHTML = companies.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.slug)}</td><td>${c._count.users}</td><td>${c._count.drivers}</td><td>${c._count.trips}</td><td><button class="btn sm" data-pick="${c.id}">Manage fleet</button></td></tr>`).join('') || '<tr><td colspan="6" class="mut">No companies yet — create one below.</td></tr>';
+      const sel = $('#f-driver-company'), had = sel.value;
+      sel.innerHTML = companies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+      if (had && companies.some(c => c.id === had)) sel.value = had;
+      if (sel.value) loadFleet(sel.value);
     }
     function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    const VEH_LABEL = { standard: 'Standard', comfort: 'Comfort', xl: 'XL', access: 'Wheelchair' };
 
-    $('#companies').addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) $('#f-driver-company').value = b.dataset.pick; });
+    async function loadFleet(companyId) {
+      const seats = await api(`/api/admin/companies/${companyId}/fleet`);
+      $('#fleet tbody').innerHTML = seats.map(s => `<tr>
+        <td class="mut">${s.slot + 1}</td><td>${esc(s.name)}</td><td>${VEH_LABEL[s.vehicleType] || esc(s.vehicleType)}</td><td class="mut">${esc(s.model)}</td>
+        <td>${s.online ? '🟢 in service' : '⚪ out of service'}</td>
+        <td>${s.username ? '👤 ' + esc(s.username) : '<span class="mut">— autopilot —</span>'}</td>
+        <td>${s.username ? `<button class="btn sm ghost" data-remove="${s.slot}">Remove login</button>` : ''}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="mut">No seats.</td></tr>';
+    }
+
+    $('#companies').addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) { $('#f-driver-company').value = b.dataset.pick; loadFleet(b.dataset.pick); window.scrollTo(0, document.body.scrollHeight); } });
+    $('#f-driver-company').addEventListener('change', e => { if (e.target.value) loadFleet(e.target.value); });
+
+    $('#fleet').addEventListener('click', async e => {
+      const b = e.target.closest('[data-remove]'); if (!b) return;
+      const companyId = $('#f-driver-company').value;
+      try { await api(`/api/admin/companies/${companyId}/fleet/${b.dataset.remove}/driver`, { method: 'DELETE' }); loadFleet(companyId); loadCompanies(); }
+      catch (err) { flash('#msg-roster', err.message, false); }
+    });
 
     $('#f-company').addEventListener('submit', async e => {
       e.preventDefault();
@@ -79,11 +108,25 @@
       try { await api('/api/admin/companies', { method: 'POST', body: JSON.stringify(data) }); e.target.reset(); flash('#msg-company', 'Company created.', true); loadCompanies(); }
       catch (err) { flash('#msg-company', err.message, false); }
     });
-    $('#f-driver').addEventListener('submit', async e => {
-      e.preventDefault();
-      const data = Object.fromEntries(new FormData(e.target)), companyId = data.companyId; delete data.companyId;
-      try { const r = await api(`/api/admin/companies/${companyId}/drivers`, { method: 'POST', body: JSON.stringify(data) }); e.target.reset(); flash('#msg-driver', `Added — controls ${r.vehicle ? r.vehicle.model + ' ' + r.vehicle.plate : 'a fleet vehicle'}.`, true); loadCompanies(); }
-      catch (err) { flash('#msg-driver', err.message, false); }
+
+    // "Name, username, password, vehicle" per line — trailing fields optional; blank lines ignored.
+    function parseRoster(text) {
+      return text.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
+        const [name, username, password, vehicleType] = line.split(',').map(s => (s || '').trim());
+        const d = { name };
+        if (username) d.username = username; if (password) d.password = password; if (vehicleType) d.vehicleType = vehicleType.toLowerCase();
+        return d;
+      });
+    }
+    $('#btn-replace-roster').addEventListener('click', async () => {
+      const companyId = $('#f-driver-company').value;
+      if (!companyId) return flash('#msg-roster', 'Create or pick a company first.', false);
+      const drivers = parseRoster($('#f-roster').value);
+      if (!drivers.length) return flash('#msg-roster', 'Paste at least one driver first.', false);
+      const companyName = $('#f-driver-company option:checked').textContent;
+      if (!confirm(`Replace every current driver on ${companyName} with this list of ${drivers.length}? Logins on seats you're not reusing will be deleted, and any seat this list doesn't cover goes out of service.`)) return;
+      try { const r = await api(`/api/admin/companies/${companyId}/fleet/bulk`, { method: 'POST', body: JSON.stringify({ drivers }) }); flash('#msg-roster', `Roster replaced — ${r.drivers.length} driver(s) set up.`, true); loadFleet(companyId); loadCompanies(); }
+      catch (err) { flash('#msg-roster', err.message, false); }
     });
 
     $('#logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.href = '/'; });

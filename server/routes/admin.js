@@ -48,34 +48,133 @@ router.post('/companies', async (req, res) => {
   res.status(201).json({ company, ops: { id: ops.id, username: ops.username } });
 });
 
-router.get('/companies/:id/drivers', async (req, res) => {
-  const slots = await prisma.driverSlot.findMany({ where: { companyId: req.params.id }, include: { user: true } });
-  res.json(slots);
+const VEHICLE_TYPES = ['standard', 'comfort', 'xl', 'access'];
+
+async function requireCompany(req, res) {
+  const company = await prisma.company.findUnique({ where: { id: req.params.id } });
+  if (!company) res.status(404).json({ error: 'No such company.' });
+  return company;
+}
+
+// Live roster: name/vehicle/model/online come from the running simulation (server/world.js), not just the
+// database, so this always reflects the real current state — including seats still running under the built-in
+// demo roster, which have no DriverSlot row at all until someone customises them.
+router.get('/companies/:id/fleet', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const world = await getWorld(company.id);
+  const rows = await prisma.driverSlot.findMany({ where: { companyId: company.id }, include: { user: true } });
+  const byIdx = {}; rows.forEach(r => { byIdx[r.slot] = r; });
+  res.json(world.state.drivers.map((d, i) => ({
+    slot: i, name: d.name, vehicleType: d.vehicle, model: d.model, online: d.online,
+    customised: !!(byIdx[i] && (byIdx[i].name || byIdx[i].userId)),
+    username: byIdx[i] && byIdx[i].user ? byIdx[i].user.username : null
+  })));
 });
 
-router.post('/companies/:id/drivers', async (req, res) => {
-  const companyId = req.params.id;
-  const company = await prisma.company.findUnique({ where: { id: companyId } });
-  if (!company) return res.status(404).json({ error: 'No such company.' });
-  const { username, password, name } = req.body || {};
-  if (!username || !password || !name) return res.status(400).json({ error: 'username, password and name are required.' });
-  if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
-  if (await prisma.user.findUnique({ where: { username: String(username).toLowerCase() } })) return res.status(409).json({ error: 'That username is already taken.' });
+// Edits one seat's display name/vehicle/model without touching whatever login is bound to it.
+router.put('/companies/:id/fleet/:slot', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const slot = Number(req.params.slot);
+  if (!Number.isInteger(slot) || slot < 0 || slot >= company.fleetSize) return res.status(400).json({ error: 'Invalid seat.' });
+  const { name, vehicleType, model } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Name is required.' });
+  if (vehicleType && !VEHICLE_TYPES.includes(vehicleType)) return res.status(400).json({ error: `vehicleType must be one of: ${VEHICLE_TYPES.join(', ')}.` });
 
-  const taken = new Set((await prisma.driverSlot.findMany({ where: { companyId } })).map(s => s.slot));
-  let slot = 0;
-  while (taken.has(slot) && slot < company.fleetSize) slot++;
-  if (slot >= company.fleetSize) return res.status(409).json({ error: `All ${company.fleetSize} fleet seats for this company already have a driver login.` });
+  await prisma.driverSlot.upsert({
+    where: { companyId_slot: { companyId: company.id, slot } },
+    update: { name, vehicleType: vehicleType || null, model: model || null },
+    create: { companyId: company.id, slot, name, vehicleType: vehicleType || null, model: model || null }
+  });
+  const world = await getWorld(company.id), seat = world.state.drivers[slot];
+  if (seat) { seat.name = name; if (vehicleType) seat.vehicle = vehicleType; if (model) seat.model = model; seat.online = true; world.RO.bus.emit('change'); }
+  res.json({ ok: true });
+});
 
-  const passwordHash = await bcrypt.hash(password, 12);
-  const driver = await prisma.user.create({ data: { role: 'DRIVER', companyId, name, username: String(username).toLowerCase(), passwordHash } });
-  await prisma.driverSlot.create({ data: { companyId, slot, userId: driver.id } });
+// Removes whichever driver login is bound to a seat (if any) — the vehicle drops out of service rather than
+// quietly continuing on autopilot, since clicking "remove" is a deliberate "this one's gone" action.
+router.delete('/companies/:id/fleet/:slot/driver', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const slot = Number(req.params.slot);
+  const row = await prisma.driverSlot.findUnique({ where: { companyId_slot: { companyId: company.id, slot } } });
+  if (!row || !row.userId) return res.status(404).json({ error: 'That seat has no driver login.' });
+  const userId = row.userId;
+  await prisma.driverSlot.update({ where: { id: row.id }, data: { userId: null } });
+  await prisma.user.delete({ where: { id: userId } }).catch(() => {}); // cascades: kills their session too, signing them out immediately
 
-  const world = await getWorld(companyId);
-  const seat = world.state.drivers[slot];
-  if (seat) { seat.human = true; seat.userId = driver.id; world.RO.bus.emit('change'); }
+  const world = await getWorld(company.id), seat = world.state.drivers[slot];
+  if (seat) {
+    if (seat.bookingId || seat.offerBookingId) world.E.driverCancel(seat, 'Driver account removed');
+    seat.human = false; seat.userId = null; seat.online = false;
+    world.RO.bus.emit('change');
+  }
+  res.json({ ok: true });
+});
 
-  res.status(201).json({ id: driver.id, username: driver.username, slot, vehicle: seat && { id: seat.id, model: seat.model, plate: seat.plate } });
+// The wholesale swap: replaces seats 0..N-1 with the given list (each new driver overwrites — and deletes the
+// login of — whatever was on that seat before) and takes every seat beyond the list out of service, so a
+// company can go from "the built-in demo roster" (or an old list) straight to exactly the real drivers named
+// here, with nothing left over. Pass just a name to leave a seat login-less (an autopilot car under a real
+// vehicle name) — useful for setting up the fleet before every driver has a phone/login yet.
+router.post('/companies/:id/fleet/bulk', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const list = Array.isArray(req.body && req.body.drivers) ? req.body.drivers : [];
+  if (!list.length) return res.status(400).json({ error: 'Provide at least one driver.' });
+  if (list.length > company.fleetSize) return res.status(400).json({ error: `This company's fleet only has ${company.fleetSize} seats.` });
+  for (const d of list) {
+    if (!d || !String(d.name || '').trim()) return res.status(400).json({ error: 'Every driver needs a name.' });
+    if (d.vehicleType && !VEHICLE_TYPES.includes(d.vehicleType)) return res.status(400).json({ error: `Invalid vehicle type "${d.vehicleType}" (use one of: ${VEHICLE_TYPES.join(', ')}).` });
+    if ((d.username && !d.password) || (d.password && !d.username)) return res.status(400).json({ error: `"${d.name}": a login needs both a username and a password.` });
+    if (d.password && String(d.password).length < 8) return res.status(400).json({ error: `"${d.name}": password must be at least 8 characters.` });
+  }
+  // Every existing seat, not just the ones the new list covers — the cleanup pass below needs the rest too, to
+  // find (and delete) logins sitting on seats that fall outside the new list.
+  const existingRows = await prisma.driverSlot.findMany({ where: { companyId: company.id } });
+  // A username must be free platform-wide — unless it's the very login already sitting on the seat we're about
+  // to overwrite anyway (re-submitting the same list shouldn't collide with itself).
+  const seatOwnsUsername = new Map(existingRows.filter(r => r.userId).map(r => [r.slot, r.userId]));
+  for (let i = 0; i < list.length; i++) {
+    const username = list[i].username && String(list[i].username).toLowerCase();
+    if (!username) continue;
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing && existing.id !== seatOwnsUsername.get(i)) return res.status(409).json({ error: `Username "${username}" is already taken.` });
+  }
+
+  const world = await getWorld(company.id);
+  const created = [];
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i], name = String(d.name).trim();
+    const prevRow = existingRows.find(r => r.slot === i);
+    if (prevRow && prevRow.userId) await prisma.user.delete({ where: { id: prevRow.userId } }).catch(() => {});
+
+    let userId = null;
+    if (d.username && d.password) {
+      const passwordHash = await bcrypt.hash(d.password, 12);
+      const user = await prisma.user.create({ data: { role: 'DRIVER', companyId: company.id, name, username: String(d.username).toLowerCase(), passwordHash } });
+      userId = user.id;
+    }
+    await prisma.driverSlot.upsert({
+      where: { companyId_slot: { companyId: company.id, slot: i } },
+      update: { name, vehicleType: d.vehicleType || null, model: d.model || null, userId },
+      create: { companyId: company.id, slot: i, name, vehicleType: d.vehicleType || null, model: d.model || null, userId }
+    });
+
+    const seat = world.state.drivers[i];
+    if (seat) {
+      if (seat.bookingId || seat.offerBookingId) world.E.driverCancel(seat, 'Fleet roster replaced');
+      seat.name = name; if (d.vehicleType) seat.vehicle = d.vehicleType; if (d.model) seat.model = d.model;
+      seat.human = !!userId; seat.userId = userId; seat.online = true;
+    }
+    created.push({ slot: i, name, username: d.username || null });
+  }
+  // Seats past the end of the new list drop out of service — no leftover demo (or old-list) drivers roaming the map.
+  for (let i = list.length; i < company.fleetSize; i++) {
+    const prevRow = existingRows.find(r => r.slot === i);
+    if (prevRow && prevRow.userId) { await prisma.user.delete({ where: { id: prevRow.userId } }).catch(() => {}); await prisma.driverSlot.update({ where: { id: prevRow.id }, data: { userId: null } }); }
+    const seat = world.state.drivers[i];
+    if (seat) { if (seat.bookingId || seat.offerBookingId) world.E.driverCancel(seat, 'Fleet roster replaced'); seat.online = false; }
+  }
+  world.RO.bus.emit('change');
+  res.status(201).json({ ok: true, drivers: created });
 });
 
 module.exports = router;

@@ -31,6 +31,8 @@
 
   /* ---------- session ---------- */
   function enter(role, who) { // who: {name, phone?, driverId?}
+    // The main app has no superuser workspace (no ROLE entry, no CSS for it) — that's what /admin.html is for.
+    if (role === 'superuser') { location.href = '/admin.html'; return; }
     RO.session = { role, name: who.name, phone: who.phone || null, driverId: who.driverId || null };
     document.body.dataset.role = role;
     U.setText(U.$('#who'), `${ROLE[role].icon} ${who.name} · ${ROLE[role].label}`);
