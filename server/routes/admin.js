@@ -110,9 +110,13 @@ router.put('/companies/:id/fleet/:slot/driver', async (req, res) => {
   if (existing && !(row && existing.id === row.userId)) return res.status(409).json({ error: `Username "${username}" is already taken.` });
   if (row && row.userId && row.userId !== (existing && existing.id)) await prisma.user.delete({ where: { id: row.userId } }).catch(() => {});
 
+  // Password is always (re)hashed and saved here, whether this is a brand-new login or "Change login" on an
+  // existing one (e.g. a reset) — the form always collects a fresh password, on the same reasoning a real
+  // password-change screen never shows or reuses the old one.
+  const passwordHash = await bcrypt.hash(password, 12);
   let userId;
-  if (existing) { await prisma.user.update({ where: { id: existing.id }, data: { name } }); userId = existing.id; }
-  else { const passwordHash = await bcrypt.hash(password, 12); const user = await prisma.user.create({ data: { role: 'DRIVER', companyId: company.id, name, username: String(username).toLowerCase(), passwordHash } }); userId = user.id; }
+  if (existing) { await prisma.user.update({ where: { id: existing.id }, data: { name, passwordHash } }); userId = existing.id; }
+  else { const user = await prisma.user.create({ data: { role: 'DRIVER', companyId: company.id, name, username: String(username).toLowerCase(), passwordHash } }); userId = user.id; }
 
   await prisma.driverSlot.upsert({
     where: { companyId_slot: { companyId: company.id, slot } },

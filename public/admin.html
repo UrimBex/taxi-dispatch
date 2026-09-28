@@ -82,22 +82,48 @@
     function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     const VEH_LABEL = { standard: 'Standard', comfort: 'Comfort', xl: 'XL', access: 'Wheelchair' };
 
+    let lastSeats = [], editingSlot = null;
+
     async function loadFleet(companyId) {
-      const seats = await api(`/api/admin/companies/${companyId}/fleet`);
-      $('#fleet tbody').innerHTML = seats.map(s => `<tr>
-        <td class="mut">${s.slot + 1}</td><td>${esc(s.name)}</td><td>${VEH_LABEL[s.vehicleType] || esc(s.vehicleType)}</td><td class="mut">${esc(s.model)}</td>
-        <td>${s.online ? '🟢 in service' : '⚪ out of service'}</td>
+      lastSeats = await api(`/api/admin/companies/${companyId}/fleet`);
+      editingSlot = null;
+      renderFleet();
+    }
+    function renderFleet() {
+      $('#fleet tbody').innerHTML = lastSeats.map(fleetRowHTML).join('') || '<tr><td colspan="7" class="mut">No seats.</td></tr>';
+      if (editingSlot != null) { const inp = $('#edit-user'); if (inp) inp.focus(); }
+    }
+    function fleetRowHTML(s) {
+      const base = `<td class="mut">${s.slot + 1}</td><td>${esc(s.name)}</td><td>${VEH_LABEL[s.vehicleType] || esc(s.vehicleType)}</td><td class="mut">${esc(s.model)}</td><td>${s.online ? '🟢 in service' : '⚪ out of service'}</td>`;
+      if (s.slot === editingSlot) {
+        return `<tr>${base}<td colspan="2"><div class="two"><input id="edit-user" placeholder="username" value="${esc(s.username || '')}" autocomplete="off"><input id="edit-pass" type="password" placeholder="${s.username ? 'new password' : 'password'}" autocomplete="new-password"></div>
+          <div class="btns" style="margin-top:6px"><button class="btn sm primary" data-save-login="${s.slot}">Save</button><button class="btn sm ghost" data-cancel-login>Cancel</button></div></td></tr>`;
+      }
+      return `<tr>${base}
         <td>${s.username ? '👤 ' + esc(s.username) : '<span class="mut">— autopilot —</span>'}</td>
-        <td>${s.username ? `<button class="btn sm ghost" data-remove="${s.slot}">Remove login</button>` : ''}</td>
-      </tr>`).join('') || '<tr><td colspan="7" class="mut">No seats.</td></tr>';
+        <td><button class="btn sm ghost" data-edit-login="${s.slot}">${s.username ? 'Change login' : '+ Add login'}</button>${s.username ? ` <button class="btn sm ghost" data-remove="${s.slot}">Remove</button>` : ''}</td>
+      </tr>`;
     }
 
     $('#companies').addEventListener('click', e => { const b = e.target.closest('[data-pick]'); if (b) { $('#f-driver-company').value = b.dataset.pick; loadFleet(b.dataset.pick); window.scrollTo(0, document.body.scrollHeight); } });
     $('#f-driver-company').addEventListener('change', e => { if (e.target.value) loadFleet(e.target.value); });
 
     $('#fleet').addEventListener('click', async e => {
-      const b = e.target.closest('[data-remove]'); if (!b) return;
       const companyId = $('#f-driver-company').value;
+      const editBtn = e.target.closest('[data-edit-login]');
+      if (editBtn) { editingSlot = Number(editBtn.dataset.editLogin); flash('#msg-roster', '', true); renderFleet(); return; }
+      if (e.target.closest('[data-cancel-login]')) { editingSlot = null; renderFleet(); return; }
+      const saveBtn = e.target.closest('[data-save-login]');
+      if (saveBtn) {
+        const slot = Number(saveBtn.dataset.saveLogin), username = $('#edit-user').value.trim(), password = $('#edit-pass').value;
+        if (!username || !password) return flash('#msg-roster', 'Username and password are both required.', false);
+        try {
+          await api(`/api/admin/companies/${companyId}/fleet/${slot}/driver`, { method: 'PUT', body: JSON.stringify({ username, password }) });
+          editingSlot = null; flash('#msg-roster', `Login set for seat ${slot + 1}.`, true); loadFleet(companyId); loadCompanies();
+        } catch (err) { flash('#msg-roster', err.message, false); }
+        return;
+      }
+      const b = e.target.closest('[data-remove]'); if (!b) return;
       try { await api(`/api/admin/companies/${companyId}/fleet/${b.dataset.remove}/driver`, { method: 'DELETE' }); loadFleet(companyId); loadCompanies(); }
       catch (err) { flash('#msg-roster', err.message, false); }
     });

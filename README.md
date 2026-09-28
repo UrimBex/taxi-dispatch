@@ -103,8 +103,8 @@ something to look at before anyone's set it up for real. To switch to your actua
 - **Replace the whole list at once** — paste `Name, username, password, vehicle` (login and vehicle both
   optional) into *Replace the roster*. This deletes the login on every seat you're overwriting and takes any
   seat the list doesn't cover out of service, so nothing from the old roster is left running.
-- **Add one driver without touching the rest** — `PUT /api/admin/companies/:id/fleet/:slot/driver` (no UI for
-  this one yet, API only) binds a login to a single seat.
+- **Add or change one driver without touching the rest** — the table row's **+ Add login** / **Change login**
+  button (a driver with no login yet can still be a real named seat, running on autopilot until they sign in).
 
 A seat's name/vehicle is a `DriverSlot` row (`prisma/schema.prisma`) applied on top of the demo roster at
 company-world startup **and after every reset** — `server/world.js`'s `loadAccounts()` re-applies it every time,
