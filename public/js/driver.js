@@ -112,7 +112,7 @@
       U.setHTML(U.$('#d-idle', root), `<div class="stat ok"><b>You're online</b><small>Waiting for trip requests… ${waiting ? waiting + ' rider' + (waiting > 1 ? 's' : '') + ' waiting in the city' : ''}</small></div>
         <div class="kv"><div><b>${mine.trips}</b><small>trips</small></div><div><b>${U.money(mine.earnings)}</b><small>earned</small></div><div><b>${mine.rating}</b><small>rating</small></div></div>`);
       let over = MV.car(d, { s: 1.8, me: true }); s.bookings.filter(b => b.status === 'pending').forEach(b => { over += MV.pin(b.pickup, { color: '#f59e0b', s: 1.2 }); });
-      dv.map.draw('', over); dv.map.centerOn(d.pos, 520);
+      dv.map.draw('', over); dv.map.centerOn(MV.driverLL(d), 520);
     } else if (dv.key.startsWith('offer')) {
       const b = E.bk(d.offerBookingId); if (!b || !b.offer) return;
       const left = Math.max(0, (b.offer.expiresAt - Date.now()) / 1000), total = s.settings.offerSec;
@@ -138,7 +138,7 @@
       else { off = !d.atTarget; label = d.atTarget ? '✔ Trip Completed' : `Driving to drop-off · ${inf.km.toFixed(1)} km`; }
       U.setText(btn, label); btn.disabled = off;
       let over = MV.car(d, { s: 1.8, me: true }) + MV.pin(target, { color: toPickup ? '#22c55e' : '#ef4444', s: 1.5 });
-      dv.map.draw(MV.line(pts, 'm-route'), over); dv.map.centerOn(d.pos, 460);
+      dv.map.draw(MV.line(pts, 'm-route'), over); dv.map.centerOn(MV.driverLL(d), 460);
     }
   }
   function toast(text, actions) {

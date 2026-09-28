@@ -77,6 +77,10 @@ const DRIVER_ACTIONS = {
     if (!hit || hit.distKm > 5) return { applied: false, reason: 'outside-service-area', distKm: hit ? +hit.distKm.toFixed(1) : null };
 
     d.pos = { x: hit.x, y: hit.y };
+    // The grid is ~1.1 km per cell (see city.js), so the snapped {x,y} above — used for routing/ETA, which have
+    // to stay on the grid graph — can visibly diverge from where the phone actually is, especially away from the
+    // core. Keep the raw fix too, so the map can show the driver where they really are (see map.js's driverLL).
+    d.gpsLat = lat; d.gpsLng = lng;
     d.gpsTracked = true; d.gpsAt = Date.now(); d.gpsAccuracyKm = +hit.distKm.toFixed(3);
 
     const b = ctx.E.bk(d.bookingId);

@@ -67,7 +67,7 @@
     }
     centerOn(p, w) {
       if (!this.host.clientWidth) return; this._fitted = true;
-      const l = C.toLatLng(p), z = Math.max(12, Math.min(17, Math.round(15 - Math.log2(w / 450)) + 0));
+      const l = p.lat != null ? p : C.toLatLng(p), z = Math.max(12, Math.min(17, Math.round(15 - Math.log2(w / 450)) + 0));
       this.map.setView([l.lat, l.lng], z, { animate: false });
     }
     draw(under, over) {
@@ -78,7 +78,7 @@
           if (!pl) pl = this.lines[li] = L.polyline(ll, { interactive: false }).addTo(this.map);
           pl.setLatLngs(ll); pl.setStyle(Object.assign({ dashArray: null }, LINE_STYLE[it.cls] || LINE_STYLE['m-route'])); li++;
         } else if (it.t === 'car') {
-          seenC[it.id] = 1; const ll = C.toLatLng(it.pos); let m = this.cars[it.id];
+          seenC[it.id] = 1; const ll = it.glat != null ? { lat: it.glat, lng: it.glng } : C.toLatLng(it.pos); let m = this.cars[it.id];
           if (!m) {
             m = this.cars[it.id] = L.marker([ll.lat, ll.lng], { icon: L.divIcon({ className: 'car-mk', iconSize: [34, 34], iconAnchor: [17, 17], html: carHTML(it) }), zIndexOffset: 500, keyboard: false }).addTo(this.map);
             m._sig = carHTML(it); m._hd = it.heading; m._ll = ll; m.on('click', () => this.o.onSelect && this.o.onSelect('driver', it.id));
@@ -106,7 +106,12 @@
     }
   }
 
-  MapView.car = (d, o) => { o = o || {}; return enc({ t: 'car', id: d.id, pos: { x: r2(d.pos.x), y: r2(d.pos.y) }, status: d.online ? d.status : 'offline', heading: d.heading || 0, s: o.s || 1, sel: !!o.sel, sos: !!o.sos, me: !!o.me, tag: !!o.tag }); };
+  // The grid position (d.pos) is what routing/ETA use, but it's snapped onto a ~1.1 km grid (see city.js) so it
+  // can visibly diverge from where the phone actually is. Prefer the raw GPS fix for anything the driver or ops
+  // actually LOOK at, while routing keeps using the grid position underneath.
+  const driverLL = d => (d.gpsTracked && d.gpsLat != null) ? { lat: d.gpsLat, lng: d.gpsLng } : C.toLatLng(d.pos);
+  MapView.driverLL = driverLL;
+  MapView.car = (d, o) => { o = o || {}; const ll = driverLL(d); return enc({ t: 'car', id: d.id, pos: { x: r2(d.pos.x), y: r2(d.pos.y) }, glat: ll.lat, glng: ll.lng, status: d.online ? d.status : 'offline', heading: d.heading || 0, s: o.s || 1, sel: !!o.sel, sos: !!o.sos, me: !!o.me, tag: !!o.tag }); };
   MapView.pin = (p, o) => { o = o || {}; return enc({ t: 'pin', x: p.x, y: p.y, color: o.color || '#ef4444', label: o.label || '', id: o.id || '', kind: o.kind, cls: o.cls || '', s: o.s || 1 }); };
   MapView.line = (pts, cls) => enc({ t: 'line', pts: pts.map(p => ({ x: r2(p.x), y: r2(p.y) })), cls: cls || 'm-route' });
   MapView.STATUS_COL = STATUS_COL;
