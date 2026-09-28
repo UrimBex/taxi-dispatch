@@ -204,7 +204,7 @@
   /* ---------- simulation ---------- */
   function moveDrivers(dtSim) {
     for (const d of S().drivers) {
-      if (!d.online) continue;
+      if (!d.online || d.gpsTracked) continue; // GPS-tracked vehicles get their position from real location updates instead — see server/ws.js's updateLocation action
       if (d.path.length) {
         let km = C.speedKmh(d.pos.x, d.pos.y) * d.speedMul / 3600 * dtSim; // real km to travel this tick
         while (km > 0 && d.path.length) {

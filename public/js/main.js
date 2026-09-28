@@ -45,6 +45,7 @@
   }
   async function logout() {
     RO.live.disconnect();
+    if (RO.driverGPS) RO.driverGPS.stop();
     try { await api('/api/auth/logout', { method: 'POST' }); } catch (e) { }
     RO.session = null;
     delete document.body.dataset.role;
@@ -53,6 +54,7 @@
   }
   function sessionReplaced() {
     RO.live.disconnect();
+    if (RO.driverGPS) RO.driverGPS.stop();
     RO.session = null;
     delete document.body.dataset.role;
     if (RO.client) RO.client.signOut();

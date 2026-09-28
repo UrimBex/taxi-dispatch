@@ -119,7 +119,7 @@
     if (d) {
       const b2 = E.bk(d.bookingId || d.offerBookingId);
       return `<div class="dt-h"><b>${d.id} ${U.esc(d.name)}</b><span class="chip ds-${d.online ? d.status : 'offline'}">${d.online ? DST[d.status] : 'Offline'}</span><button class="x" data-act="close">✕</button></div>
-        <div class="dt-g"><span>Vehicle</span><b>${d.model} · ${V[d.vehicle].label} · ${d.plate}</b><span>Stats</span><b>★${d.rating} · ${d.trips} trips · ${U.money(d.earnings)}</b><span>Location</span><b>${U.esc(C.label(C.snap(d.pos)))}</b><span>Job</span><b>${b2 ? b2.id + ' ' + U.esc(b2.pickup.label) + ' → ' + U.esc(b2.dropoff.label) : 'none'}</b></div>
+        <div class="dt-g"><span>Vehicle</span><b>${d.model} · ${V[d.vehicle].label} · ${d.plate}</b><span>Stats</span><b>★${d.rating} · ${d.trips} trips · ${U.money(d.earnings)}</b><span>Location</span><b>${U.esc(C.label(C.snap(d.pos)))} ${d.gpsTracked ? '· <span class="chip on" style="font-size:10px">📍 live GPS</span>' : ''}</b><span>Job</span><b>${b2 ? b2.id + ' ' + U.esc(b2.pickup.label) + ' → ' + U.esc(b2.dropoff.label) : 'none'}</b></div>
         <div class="dt-a">${d.online ? '<button class="btn sm primary" data-act="calldrv">📞 VoIP call</button>' : ''}${b2 ? `<button class="btn sm" data-bk="${b2.id}">Open ${b2.id}</button>` : ''}</div>`;
     }
     return '';

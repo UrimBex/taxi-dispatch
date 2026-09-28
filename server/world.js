@@ -71,11 +71,18 @@ class World {
       this.completedListeners.forEach(fn => fn({ driverId, bid }));
     });
 
-    let last = Date.now();
+    let last = Date.now(), lastGpsCheck = Date.now();
     this._interval = setInterval(() => {
       const t = Date.now(), dt = Math.min(1, (t - last) / 1000);
       last = t;
       this.E.tick(dt);
+      // A GPS-tracked vehicle whose phone has gone quiet for a while (screen locked, tab backgrounded, signal
+      // lost, permission revoked mid-shift) resumes simulated movement from wherever it last really was, rather
+      // than sitting frozen on the map indefinitely — checked every few seconds, not every tick.
+      if (t - lastGpsCheck > 5000) {
+        lastGpsCheck = t;
+        for (const d of this.state.drivers) if (d.gpsTracked && t - d.gpsAt > 30000) { d.gpsTracked = false; this.RO.bus.emit('change'); }
+      }
     }, 200);
   }
 

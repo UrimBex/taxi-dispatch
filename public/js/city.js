@@ -142,7 +142,41 @@
     for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) { const n = nodeLL(i, j), d = (n.lat - lat) ** 2 + ((n.lng - lng) * cosLat) ** 2; if (d < bd) { bd = d; best = { x: i * G, y: j * G }; } }
     return best;
   }
+  /* Projects a real lat/lng onto the nearest point on the actual road network — unlike fromLatLng (nearest
+     intersection only), this lands mid-block, which is what a real GPS fix needs: a driver is almost never
+     standing exactly on a junction. Flat-earth approximation (same km/degree factors getEdge already uses for
+     edge lengths) is plenty accurate at city scale. Returns {x, y, distKm}; a large distKm means the fix isn't
+     near any mapped road at all (e.g. the device is nowhere near the service area) — callers should treat that
+     as "don't trust this fix" rather than snapping to whatever's nominally closest. */
+  function nearestOnRoad(lat, lng) {
+    const ky = 111.2, kx = 111.2 * cosLat, py = lat * ky, px = lng * kx;
+    let best = null, bd = Infinity;
+    function scan(axis, i, j) {
+      const e = getEdge(axis, i, j), pts = e.pts, cum = e.cum;
+      for (let k = 1; k < pts.length; k++) {
+        const ay = pts[k - 1][0] * ky, ax = pts[k - 1][1] * kx, by = pts[k][0] * ky, bx = pts[k][1] * kx;
+        const dx = bx - ax, dy = by - ay, segLen2 = dx * dx + dy * dy;
+        const t = segLen2 > 1e-12 ? clamp(((px - ax) * dx + (py - ay) * dy) / segLen2, 0, 1) : 0;
+        const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+        if (d < bd) { bd = d; best = { axis, i, j, frac: e.total > 1e-9 ? (cum[k - 1] + t * Math.hypot(dx, dy)) / e.total : 0 }; }
+      }
+    }
+    for (let j = 0; j < ROWS; j++) for (let i = 0; i < COLS; i++) {
+      if (i < COLS - 1) scan('h', i, j);
+      if (j < ROWS - 1) scan('v', i, j);
+    }
+    if (!best) return null;
+    const f = clamp(best.frac, 0, 1);
+    return {
+      x: best.axis === 'h' ? best.i * G + f * G : best.i * G,
+      y: best.axis === 'h' ? best.j * G : best.j * G + f * G,
+      distKm: bd
+    };
+  }
   const bounds = () => { const a = nodeLL(0, ROWS - 1), b = nodeLL(COLS - 1, 0); return [[Math.min(a.lat, b.lat) - .004, Math.min(a.lng, b.lng) - .004], [Math.max(a.lat, b.lat) + .004, Math.max(a.lng, b.lng) + .004]]; };
+  /* Straight-line distance between two grid positions, in real km (via their real coordinates) — for "how close
+     is the driver to X" checks, where road-following distance would be overkill. */
+  function distKm(a, b) { const la = toLatLng(a), lb = toLatLng(b); return Math.hypot((la.lat - lb.lat) * 111.2, (la.lng - lb.lng) * 111.2 * cosLat); }
 
   /* ---------- naming / turn-by-turn ---------- */
   function label(p) {
@@ -167,5 +201,5 @@
     return steps;
   }
 
-  RO.City = { G, COLS, ROWS, W, H, CORE_H: (CORE_ROWS - 1) * G, LM, ZX, ZY, zones, geo: !!R, area: R ? R.area : 'Demo city', updateTraffic, density, speedKmh, addJam, snap, randomNode, label, polyInfo, kmPerHundred, route, instructions, toLatLng, pathLatLngs, fromLatLng, bounds };
+  RO.City = { G, COLS, ROWS, W, H, CORE_H: (CORE_ROWS - 1) * G, LM, ZX, ZY, zones, geo: !!R, area: R ? R.area : 'Demo city', updateTraffic, density, speedKmh, addJam, snap, randomNode, label, polyInfo, kmPerHundred, route, instructions, toLatLng, pathLatLngs, fromLatLng, nearestOnRoad, distKm, bounds };
 })(window.RO = window.RO || {});

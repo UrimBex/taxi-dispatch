@@ -61,9 +61,33 @@ const DRIVER_ACTIONS = {
     const d = ctx.driver; if (!d) return;
     d.online = !!a.online;
     if (!d.online && d.bookingId) ctx.E.driverCancel(d, 'Went offline');
-    if (!d.online) { d.status = 'available'; d.path = d.path.slice(0, 1); }
+    if (!d.online) { d.status = 'available'; d.path = d.path.slice(0, 1); d.gpsTracked = false; } // stop trusting a GPS fix from before they went offline
     ctx.E.log(`${d.id} ${d.online ? 'went online' : 'went offline'}`);
     ctx.emitChange();
+  },
+  // A real GPS fix from the driver's phone (see public/js/driver.js) — replaces this vehicle's simulated
+  // position with where it actually is, snapped onto the nearest real road (see nearestOnRoad in city.js).
+  // Silently ignored (not an error) when the fix isn't near any mapped road at all — e.g. testing from outside
+  // the service area, or before a fix arrives — so the caller falls back to simulated movement instead.
+  updateLocation: (ctx, a) => {
+    const d = ctx.driver; if (!d || !d.online) return { applied: false, reason: 'offline' };
+    const lat = Number(a.lat), lng = Number(a.lng);
+    if (!isFinite(lat) || !isFinite(lng)) return { applied: false, reason: 'invalid' };
+    const hit = ctx.C.nearestOnRoad(lat, lng);
+    if (!hit || hit.distKm > 5) return { applied: false, reason: 'outside-service-area', distKm: hit ? +hit.distKm.toFixed(1) : null };
+
+    d.pos = { x: hit.x, y: hit.y };
+    d.gpsTracked = true; d.gpsAt = Date.now(); d.gpsAccuracyKm = +hit.distKm.toFixed(3);
+
+    const b = ctx.E.bk(d.bookingId);
+    if (b && (b.status === 'enroute' || b.status === 'ontrip')) {
+      const target = b.status === 'enroute' ? b.pickup : b.dropoff;
+      // "arrived" is decided by real proximity now (within ~80m), not by a simulated path running out.
+      if (ctx.C.distKm(d.pos, target) < 0.08) { d.path = []; d.atTarget = true; }
+      else { d.path = ctx.C.route(d.pos, target); d.atTarget = false; }
+    } else { d.path = []; d.atTarget = false; }
+    ctx.emitChange();
+    return { applied: true };
   },
   acceptOffer: ctx => ctx.driver && ctx.E.acceptOffer(ctx.driver),
   declineOffer: ctx => ctx.driver && ctx.E.declineOffer(ctx.driver, 'declined'),
@@ -121,7 +145,7 @@ function attach(server, { onUpgradeAuth }) {
     const actions = ACTIONS_BY_ROLE[user.role] || {};
     const ctx = {
       role: user.role, name: user.name, phone: user.phone, userId: user.id,
-      state: world.state, E: world.E,
+      state: world.state, E: world.E, C: world.RO.City,
       get driver() { return world.driverForUser(user.id); },
       emitChange: () => world.RO.bus.emit('change')
     };

@@ -35,3 +35,11 @@ belongs in the UI modules (`customer.js`, `driver.js`, `ops.js`, `ivr.js`,
 If you add a new mutation to engine.js, also add it to the right role's
 action table in `server/ws.js` — nothing is reachable from a client unless
 it's listed there.
+
+These files aren't frozen — `moveDrivers()` in engine.js has one line
+(`|| d.gpsTracked`) added specifically so a GPS-tracked vehicle's position
+comes from a real fix (`server/ws.js`'s `updateLocation`) instead of the
+simulated route-following. That's a legitimate reason to touch them: a
+genuine shared-behaviour need, not something that only matters to one
+side. Keep changes there minimal and comment why, same as that one did —
+the read/mutation split above is still the default shape for anything new.

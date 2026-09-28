@@ -96,6 +96,7 @@ span.chip,.row .chip{font-weight:600;font-size:11px;padding:2px 8px}
 /* driver */
 .d-wrap{flex:1;display:flex;flex-direction:column;min-height:0;background:#fff}.d-top{border-bottom:1px solid var(--line)}.d-top>div:nth-child(2){flex:1}.d-main{flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto}
 .switch{position:relative;width:46px;height:26px;margin:0}.switch input{opacity:0;position:absolute;width:100%;height:100%;margin:0;z-index:2;cursor:pointer}.switch i{position:absolute;inset:0;background:#cbd5e1;border-radius:13px;transition:.2s}.switch i:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:.2s}.switch input:checked+i{background:#16a34a}.switch input:checked+i:after{left:23px}
+.gps-badge{font-size:10.5px;font-weight:700;padding:3px 7px;border-radius:8px;background:#e2e8f0;color:#475569;white-space:nowrap;margin-right:2px}.gps-badge.live{background:#dcfce7;color:#15803d}.gps-badge.warn{background:#fef3c7;color:#92400e}
 .d-sum .big{font-size:36px;font-weight:800;color:#15803d}
 .kv{display:grid;grid-template-columns:repeat(3,1fr);text-align:center;gap:6px}.kv b{font-size:16px;display:block}
 .offer{padding:12px 16px;display:flex;flex-direction:column;gap:9px;position:relative}.offer h3{margin:0}

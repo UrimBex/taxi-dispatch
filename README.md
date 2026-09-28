@@ -57,7 +57,7 @@ Open http://localhost:3000 (or whatever `INTERNAL_PORT` you set).
 | Role | Sign-in | Sees |
 |---|---|---|
 | Client | phone number + text-message code (demo rider: `+383 44 111 222`; any other number registers a new rider) | Rider app (returning riders keep saved places and trip history) + the phone line (IVR) |
-| Driver | username `driver` / password `driver-demo-pass` | Driver app, bound to one vehicle (Ben Krasniqi, seat 7 of the fleet) |
+| Driver | username `driver` / password `driver-demo-pass` | Driver app, bound to one vehicle (Ben Krasniqi, seat 7 of the fleet) — see *Fleet roster* below, this login won't exist once the roster's been replaced |
 | Ops room | username `ops` / password `ops-demo-pass` | Dispatch dashboard, alerts, call queue + operator desk, rules, simulation controls |
 | Superuser | username `superadmin` / password `super-admin-pass` | `/admin.html` — create more companies and driver logins |
 
@@ -94,6 +94,49 @@ To reinstall: `node scripts/uninstall-service.js` first. To restore from a backu
 `node scripts/restore-backup.js` (`--list` to see snapshots, `--file <path>` to pick one — stops the service,
 swaps the database, keeps a safety copy of what it replaced, starts the service back up).
 
+## Fleet roster (real drivers, not the demo names)
+
+Every company starts out running the built-in 14-name demo roster (`ROSTER` in `public/js/store.js`) so there's
+something to look at before anyone's set it up for real. To switch to your actual drivers, sign in at
+`/admin.html` as the superuser, pick **Manage fleet** on the company, and either:
+
+- **Replace the whole list at once** — paste `Name, username, password, vehicle` (login and vehicle both
+  optional) into *Replace the roster*. This deletes the login on every seat you're overwriting and takes any
+  seat the list doesn't cover out of service, so nothing from the old roster is left running.
+- **Add one driver without touching the rest** — `PUT /api/admin/companies/:id/fleet/:slot/driver` (no UI for
+  this one yet, API only) binds a login to a single seat.
+
+A seat's name/vehicle is a `DriverSlot` row (`prisma/schema.prisma`) applied on top of the demo roster at
+company-world startup **and after every reset** — `server/world.js`'s `loadAccounts()` re-applies it every time,
+since a reset regenerates the roster from scratch first.
+
+## Real GPS tracking
+
+Signing into the driver app and going online also asks the browser for the device's real location
+(`navigator.geolocation.watchPosition`, started/stopped by the online toggle) and sends a fix to the server every
+~6s. The server projects it onto the nearest point on the actual road network — mid-block, not just the nearest
+intersection (`nearestOnRoad` in `public/js/city.js`) — and that becomes the vehicle's real position, replacing
+the simulated route-following for as long as fixes keep arriving (`d.gpsTracked`, checked in `moveDrivers()`,
+`public/js/engine.js`). A rider's ETA, the ops map, and the driver's own turn-by-turn are all just reading
+`driver.pos`, so none of them needed to change.
+
+A few things worth knowing:
+
+- **The service area is real, fixed geography** (Prishtina · Obiliq · Fushë Kosovë) — a fix more than 5 km from
+  any mapped road is rejected rather than trusted (returned as `{applied:false, reason:'outside-service-area'}`),
+  and the driver app's badge (📍 *Live GPS* / *Outside area* / *Simulated* / permission states) reflects the most
+  recent attempt, not just whether tracking is technically still active. Testing this from anywhere outside that
+  area — the normal case during development — will hit that fallback; it's meant to.
+- **A stale device falls back to simulated movement**, not a frozen car: if fixes stop arriving for 30s (screen
+  locked, tab backgrounded, permission revoked mid-shift), `world.js`'s tick loop clears `gpsTracked` and the
+  vehicle resumes route-following from wherever it last really was.
+- **Arrival is decided by real proximity** (within ~80m of the pickup/dropoff) while GPS-tracked, not by a
+  simulated path running out — same "Arrived at Pickup" button, just driven by where the phone says the driver
+  actually is.
+- Two real streets can legitimately pass within meters of each other in this dataset — a fix can occasionally
+  snap onto a nearby parallel/crossing road instead of the "right" one. A known, minor limitation of snapping
+  discrete fixes onto a simplified grid graph, not a bug to chase further for this scale of app.
+
 ## Not in this pass
 
 - **Real SMS/telephony**: the phone line is a simulator (`public/js/ivr.js`) and rider codes are logged/returned
@@ -101,9 +144,6 @@ swaps the database, keeps a safety copy of what it replaced, starts the service 
   simulator's touch-tone flow into a real telephony provider (Twilio Studio, Amazon Connect) separately.
 - **Real payments**: fares are simulated (`completeTrip()` in `engine.js`) with a random failure rate for the ops
   "retry payment" flow to have something to do — wire a real processor in similarly to BarSaaS's mock-Stripe.
-- **Per-company fleet rosters**: every company currently gets the same 14 demo driver names/vehicles
-  (`ROSTER` in `public/js/store.js`) — fine for a pilot, worth making configurable per company before reselling
-  this to a second real client.
 - **Driver stats/company settings persistence**: a driver's rating/trip-count/earnings and the Rules-tab settings
   reset to defaults on a service restart (only completed trips, accounts and saved places are durable — see
   `prisma/schema.prisma`).

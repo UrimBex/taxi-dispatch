@@ -90,6 +90,39 @@ router.put('/companies/:id/fleet/:slot', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Adds (or replaces) the login on exactly one seat, leaving every other seat untouched — for topping up the
+// roster one driver at a time (a new hire, or finally giving an existing named-but-loginless seat a real login)
+// without redoing the whole list via /fleet/bulk. name defaults to whatever the seat is already called.
+router.put('/companies/:id/fleet/:slot/driver', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const slot = Number(req.params.slot);
+  if (!Number.isInteger(slot) || slot < 0 || slot >= company.fleetSize) return res.status(400).json({ error: 'Invalid seat.' });
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'username and password are required.' });
+  if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+
+  const world = await getWorld(company.id), seat = world.state.drivers[slot];
+  const name = String((req.body && req.body.name) || (seat && seat.name) || '').trim();
+  if (!name) return res.status(400).json({ error: 'name is required (this seat has no existing name to fall back on).' });
+
+  const existing = await prisma.user.findUnique({ where: { username: String(username).toLowerCase() } });
+  const row = await prisma.driverSlot.findUnique({ where: { companyId_slot: { companyId: company.id, slot } } });
+  if (existing && !(row && existing.id === row.userId)) return res.status(409).json({ error: `Username "${username}" is already taken.` });
+  if (row && row.userId && row.userId !== (existing && existing.id)) await prisma.user.delete({ where: { id: row.userId } }).catch(() => {});
+
+  let userId;
+  if (existing) { await prisma.user.update({ where: { id: existing.id }, data: { name } }); userId = existing.id; }
+  else { const passwordHash = await bcrypt.hash(password, 12); const user = await prisma.user.create({ data: { role: 'DRIVER', companyId: company.id, name, username: String(username).toLowerCase(), passwordHash } }); userId = user.id; }
+
+  await prisma.driverSlot.upsert({
+    where: { companyId_slot: { companyId: company.id, slot } },
+    update: { name, userId },
+    create: { companyId: company.id, slot, name, userId }
+  });
+  if (seat) { seat.name = name; seat.human = true; seat.userId = userId; seat.online = true; world.RO.bus.emit('change'); }
+  res.status(201).json({ ok: true, slot, username: String(username).toLowerCase() });
+});
+
 // Removes whichever driver login is bound to a seat (if any) — the vehicle drops out of service rather than
 // quietly continuing on autopilot, since clicking "remove" is a deliberate "this one's gone" action.
 router.delete('/companies/:id/fleet/:slot/driver', async (req, res) => {

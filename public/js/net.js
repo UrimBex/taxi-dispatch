@@ -84,6 +84,7 @@
     // new: not present in the old client-only engine — used by main.js's top bar and ops.js's Rules tab, which
     // used to mutate RO.state.speed / .settings directly (that would now just get overwritten by the next push).
     setOnline: online => rpc('setOnline', { online }),
+    updateLocation: (lat, lng) => rpc('updateLocation', { lat, lng }),
     setSpeed: speed => rpc('setSpeed', { speed }),
     updateSettings: patch => rpc('updateSettings', { patch }),
     ivrRebook: o => rpc('ivrRebook', o),

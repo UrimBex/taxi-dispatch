@@ -7,6 +7,44 @@
   const root = U.$('#drv'), st = () => RO.state;
   const me = () => RO.session && RO.session.driverId ? E.drv(RO.session.driverId) : null;
   const dv = { key: '', map: null, summary: null, cancelOpen: false };
+  const gps = { watchId: null, status: 'off', lastSentAt: 0 }; // status: off | requesting | denied | unavailable | outside | active
+
+  /* Real location tracking: on while online, off while offline — see server/ws.js's updateLocation action and
+     AGENTS.md. Throttled independently of how often the browser's own watchPosition fires (varies a lot by
+     device); the server itself also treats a fix as authoritative only while it keeps arriving (see world.js's
+     staleness fallback), so a dropped connection/permission just quietly reverts to simulated movement. */
+  function startGPS() {
+    if (gps.watchId != null) return;
+    if (!navigator.geolocation) { gps.status = 'unavailable'; return refresh(); }
+    gps.status = 'requesting'; refresh();
+    gps.watchId = navigator.geolocation.watchPosition(
+      pos => {
+        const t = Date.now(); if (t - gps.lastSentAt < 6000) return;
+        gps.lastSentAt = t;
+        E.updateLocation(pos.coords.latitude, pos.coords.longitude).then(r => {
+          gps.status = r && r.applied ? 'active' : (r && r.reason === 'outside-service-area' ? 'outside' : gps.status);
+          refresh();
+        }).catch(() => {});
+      },
+      err => { gps.status = err.code === 1 ? 'denied' : 'unavailable'; refresh(); },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+    );
+  }
+  function stopGPS() { if (gps.watchId != null) { navigator.geolocation.clearWatch(gps.watchId); gps.watchId = null; } gps.status = 'off'; }
+  RO.driverGPS = { stop: stopGPS }; // called from main.js on sign-out, so a watch never keeps running under a different session
+
+  function gpsBadge(d) {
+    if (!d.online) return '';
+    // The most recent update attempt (gps.status) takes priority over d.gpsTracked — the server keeps trusting
+    // the last GOOD fix for actual positioning for a while (see world.js's staleness fallback, ~30s), which is
+    // the right call for the car's position on the map, but the driver should find out about a problem with
+    // their CURRENT fix immediately, not have this badge keep claiming "Live GPS" off a stale earlier success.
+    const problem = ['requesting', 'denied', 'outside', 'unavailable'].includes(gps.status);
+    if (!problem && d.gpsTracked) return '<span class="gps-badge live" title="Tracking your real location">📍 Live GPS</span>';
+    const label = { requesting: '📍 …', denied: '📍 Off', outside: '📍 Outside area', unavailable: '📍 N/A', off: '🧭 Simulated', active: '📍 …' }[gps.status];
+    const title = { requesting: 'Waiting for location permission…', denied: 'Location permission denied — using simulated movement for this demo', outside: "Your phone's real location is outside the mapped service area — using simulated movement for this demo", unavailable: 'Location not available on this device/browser — using simulated movement', off: 'Simulated movement (no real GPS)', active: 'Waiting for a location fix…' }[gps.status];
+    return `<span class="gps-badge${problem && gps.status !== 'requesting' ? ' warn' : ''}" title="${U.esc(title)}">${label}</span>`;
+  }
 
   function viewKey(d) {
     if (!d) return 'unassigned';
@@ -22,7 +60,7 @@
     return `<div class="stepper">${STEPS.map((s, k) => `<span class="${k < i ? 'done' : k === i ? 'cur' : ''}">${s}</span>`).join('')}</div>`;
   }
   const head = d => `<div class="d-top"><div class="av">${U.initials(d.name)}</div><div><b>${U.esc(d.name)}</b><small>${d.model} · ${d.plate} · ★ ${d.rating}</small></div>
-    <label class="switch"><input type="checkbox" data-act="online" ${d.online ? 'checked' : ''}><i></i></label></div>`;
+    <span id="gps-badge">${gpsBadge(d)}</span><label class="switch"><input type="checkbox" data-act="online" ${d.online ? 'checked' : ''}><i></i></label></div>`;
 
   function render(d) {
     // dv.summary can go stale (e.g. after a company reset wipes the booking it pointed to) — fall through to a
@@ -67,6 +105,7 @@
   }
 
   function update(d) {
+    if (d) U.setHTML(U.$('#gps-badge', root), gpsBadge(d)); // kept live independent of which sub-view is showing — see startGPS/stopGPS
     const s = st(); if (!d || (!dv.map && !U.$('#d-ring', root))) return;
     if (dv.key === 'idle') {
       const waiting = s.bookings.filter(b => b.status === 'pending').length, mine = d;
@@ -116,8 +155,8 @@
   root.addEventListener('click', async e => {
     const t = e.target.closest('button,input'); if (!t) return; const a = t.dataset.act, d = me(); if (!d) return;
     if (t.dataset.reason) { dv.cancelOpen = false; await E.driverCancel(d, t.dataset.reason); return; }
-    if (a === 'online') return E.setOnline(t.checked);
-    if (a === 'goon') return E.setOnline(true);
+    if (a === 'online') { t.checked ? startGPS() : stopGPS(); return E.setOnline(t.checked); }
+    if (a === 'goon') { startGPS(); return E.setOnline(true); }
     if (a === 'accept') return E.acceptOffer();
     if (a === 'decline') return E.declineOffer();
     if (a === 'status') { const b = E.bk(d.bookingId); if (!b) return; if (b.status === 'enroute') return E.arrived(); if (b.status === 'arrived') return E.startTrip(); return E.completeTrip(); }
@@ -131,8 +170,20 @@
     if (a === 'vend') return E.voipEnd();
   });
 
+  // Right after login, RO.state is briefly still store.js's own local placeholder (regenerated fresh on every
+  // page load) until the real server snapshot arrives over the WebSocket — on a slow connection this can be
+  // long enough to actually see. Rendering the real driver view against that placeholder would show the wrong
+  // name/vehicle/plate (whichever demo seat this login's driverId happens to land on) and, since the header is
+  // only rebuilt when the *view* changes (not on every tick), that wrong data would then stick around
+  // indefinitely even after the real data arrives. So: don't render the real view at all until at least one
+  // genuine snapshot (bus 'change', which only ever fires from a server push — see net.js) has actually landed.
+  let hasState = false;
+  bus.on('change', () => { hasState = true; });
+
   function refresh() {
-    if (!root.offsetParent) return; const d = me();
+    if (!root.offsetParent) return;
+    if (!hasState) { root.innerHTML = '<div class="d-wrap"><div class="d-main"><div class="d-sum"><div class="spin"></div><small class="mut">Connecting…</small></div></div></div>'; dv.key = ''; return; }
+    const d = me();
     if (viewKey(d) !== dv.key) render(d); else update(d);
     voipView();
   }
@@ -141,5 +192,5 @@
   bus.on('completed', m => { const d = me(); if (d && m.driverId === d.id) { dv.summary = { bid: m.bid, fare: m.fare, payment: m.payment }; refresh(); } });
   bus.on('driver-msg', t => { toast('📣 ' + U.esc(t)); setTimeout(() => { if (!st().voip) toast(''); }, 5000); });
   bus.on('devshow', id => { if (id === 'driver') { dv.key = ''; refresh(); } });
-  render(me());
+  refresh();
 })(window.RO);

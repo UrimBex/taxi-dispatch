@@ -58,10 +58,18 @@ async function main() {
   console.log('verify-code:', r.status, r.body);
   const clientCookie = r.cookie;
 
-  console.log('\n== Driver login ==');
-  r = await jsonFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: 'driver', password: 'driver-demo-pass' }) });
+  console.log('\n== Driver login (creates its own test driver via the admin API — the seeded one may since have been replaced by fleet-roster testing) ==');
+  r = await jsonFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: 'superadmin', password: 'super-admin-pass' }) });
+  const superCookie = r.cookie;
+  r = await jsonFetch('/api/admin/companies', {}, superCookie);
+  const company = r.body[0];
+  r = await jsonFetch(`/api/admin/companies/${company.id}/fleet`, {}, superCookie);
+  const freeSlot = r.body.find(s => !s.username);
+  const driverUsername = 'smoke-test-' + Date.now(), driverPassword = 'smoke-test-pass-123';
+  await jsonFetch(`/api/admin/companies/${company.id}/fleet/${freeSlot.slot}/driver`, { method: 'PUT', body: JSON.stringify({ name: 'Smoke Test Driver', username: driverUsername, password: driverPassword }) }, superCookie);
+  r = await jsonFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: driverUsername, password: driverPassword }) });
   console.log(r.status, r.body);
-  const driverCookie = r.cookie;
+  const driverCookie = r.cookie, driverId = r.body.driverId;
 
   console.log('\n== WS: connect all three, ops creates a booking, driver accepts, verify all three see it ==');
   const opsWs = await connectWs(opsCookie);
@@ -76,7 +84,7 @@ async function main() {
 
   // wait for driver to see an offer, or force-assign if auto-dispatch hasn't picked a bot yet
   await new Promise(r2 => setTimeout(r2, 2000));
-  await rpc(opsWs, 'assign', { bookingId, driverId: 'D07' });
+  await rpc(opsWs, 'assign', { bookingId, driverId });
   await new Promise(r2 => setTimeout(r2, 500));
 
   const accept = await rpc(driverWs, 'acceptOffer', {});
