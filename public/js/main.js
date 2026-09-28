@@ -70,7 +70,8 @@
     U.$('#lg-client').style.display = t === 'client' ? '' : 'none';
     U.$('#login-form').style.display = t === 'client' ? 'none' : '';
     U.$('#demo-accts').innerHTML = t === 'driver' ? '<button type="button" class="acct" data-u="driver" data-p="driver-demo-pass"><span>🚗</span><div><b>Driver</b><small>Demo login (the seeded driver, Ben Krasniqi)</small></div><code>driver / driver-demo-pass</code></button>'
-      : t === 'ops' ? '<button type="button" class="acct" data-u="ops" data-p="ops-demo-pass"><span>🎧</span><div><b>Ops room</b><small>Demo login</small></div><code>ops / ops-demo-pass</code></button>' : '';
+      : t === 'ops' ? '<button type="button" class="acct" data-u="ops" data-p="ops-demo-pass"><span>🎧</span><div><b>Ops room</b><small>Demo login</small></div><code>ops / ops-demo-pass</code></button>'
+      : t === 'superuser' ? '<button type="button" class="acct" data-u="superadmin" data-p="super-admin-pass"><span>🛡️</span><div><b>Superuser</b><small>Platform admin — create companies, manage fleets at /admin.html</small></div><code>superadmin / super-admin-pass</code></button>' : '';
     U.$('#lg-user').value = ''; U.$('#lg-pass').value = ''; U.setText(U.$('#lg-err'), '');
   }
   function showLogin(msg) {
