@@ -120,12 +120,9 @@
   });
   U.$('#logout').addEventListener('click', logout);
 
-  /* ---------- ops-only sim controls (RPCs now — the clock/fleet are shared, not local) ---------- */
-  U.$('#speed').addEventListener('change', e => RO.E.setSpeed(+e.target.value));
-  U.$('#pause').addEventListener('click', () => RO.E.setPaused(!RO.state.paused));
-  U.$('#demand').addEventListener('change', e => RO.E.updateSettings({ demandOn: e.target.checked }));
-  U.$('#reset').addEventListener('click', () => { if (confirm("Reset this company's simulation (drivers, bookings, calls)? Rider accounts are kept.")) RO.E.reset(); });
-  bus.on('tick', () => { U.setText(U.$('#clock'), U.clock(RO.state.simSec)); U.$('#pause').textContent = RO.state.paused ? '▶ Resume' : '⏸ Pause'; U.$('#speed').value = RO.state.speed; U.$('#demand').checked = RO.state.settings.demandOn; });
+  /* ---------- ops-only controls (RPCs — the clock/fleet are shared, not local) ---------- */
+  U.$('#reset').addEventListener('click', () => { if (confirm("Reset this company's dispatch state (drivers, bookings, calls)? Rider accounts are kept.")) RO.E.reset(); });
+  bus.on('tick', () => { U.setText(U.$('#clock'), U.clock(RO.state.simSec)); });
   bus.on('live', up => { const b = document.body; b.classList.toggle('offline', !up); });
 
   RO.start = async function () {

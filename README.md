@@ -58,7 +58,7 @@ Open http://localhost:3000 (or whatever `INTERNAL_PORT` you set).
 |---|---|---|
 | Client | phone number + text-message code (demo rider: `+383 44 111 222`; any other number registers a new rider) | Rider app (returning riders keep saved places and trip history) + the phone line (IVR) |
 | Driver | username `driver` / password `driver-demo-pass` | Driver app, bound to one vehicle (Ben Krasniqi, seat 7 of the fleet) — see *Fleet roster* below, this login won't exist once the roster's been replaced |
-| Ops room | username `ops` / password `ops-demo-pass` | Dispatch dashboard, alerts, call queue + operator desk, rules, simulation controls |
+| Ops room | username `ops` / password `ops-demo-pass` | Dispatch dashboard, alerts, call queue + operator desk, rules |
 | Superuser | username `superadmin` / password `super-admin-pass` | `/admin.html` — create more companies and driver logins |
 
 **Change all of these before this is reachable by anyone but you** — see `.env` and the admin panel. In dev mode,
@@ -171,16 +171,19 @@ The service area is **Prishtina + Obiliq + Fushë Kosovë**, drawn on OpenStreet
   (MapTiler, Stadia, self-hosted) and your own OSRM/Valhalla.
 - Map data © OpenStreetMap contributors (ODbL).
 
-## Simulation notes
+## Live operation notes
 
-- Time runs at 12× by default (speed selector, ops-only, applies to the whole company); offer timers and alert
-  thresholds are in real seconds. All connected ops viewers share one clock/speed/pause state now.
-- 1 grid step ≈ 1.1 km straight-line and ≈ 2 km by road; traffic follows a rush-hour curve (heaviest in central
-  Prishtina) and slows vehicles; the sim clock starts at 08:15 when a company's world is first created.
-- Roughly 1 in 8 simulated trips is to or from the airport; everyday cruising and demand stay in the urban core.
-- Background demand, inbound calls and bot-driver behaviour (accept/decline/ignore/cancel) can be tuned or turned
-  off per company in *Ops → Rules*.
-- *Reset* (ops-only) clears that company's fleet, bookings and calls but keeps rider accounts and trip history.
+- The clock runs at real time (1×) — no sped-up or pausable "sim clock". Offer timers and alert thresholds are in
+  real seconds, and traffic follows a rush-hour curve keyed to the actual time of day on the server.
+- There is no background demand generator, no simulated inbound calls and no autopilot ("bot") drivers — every
+  booking, call and vehicle on the dashboard is real. A seat with no driver logged in just sits out of service
+  (see *Fleet roster* below) instead of roaming the map on its own.
+- The *Phone / IVR* tab in the rider app is a manual, hand-driven demo of the CTI/IVR concept (pick a caller
+  number, press digits) for showing the client how phone bookings would screen-pop in the ops room — nothing on
+  it fires on its own. It's a stand-in until a real telephony integration (Twilio/SIP) is wired up; see
+  "Not in this pass" below.
+- *Reset* (ops-only) clears that company's active bookings, calls and driver state (re-applying the saved fleet
+  roster) but keeps rider accounts and trip history — useful for clearing out stuck state, not a scheduled thing.
 
 ## Manual end-to-end check
 

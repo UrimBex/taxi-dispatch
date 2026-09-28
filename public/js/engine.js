@@ -37,7 +37,7 @@
       if (!d.online || d.status !== 'available' || (b.declinedBy || []).includes(d.id) || !canServe(d, b)) continue;
       const i = etaTo(d, b.pickup);
       if (i.etaMin > st.maxEtaMin) continue;
-      const score = st.wETA * i.etaMin + st.wTraffic * i.avgDensity * 10 + st.wRating * (5 - d.rating) * 4 - (d.human && st.favorHuman ? 6 : 0);
+      const score = st.wETA * i.etaMin + st.wTraffic * i.avgDensity * 10 + st.wRating * (5 - d.rating) * 4;
       out.push(Object.assign({ d, score }, i));
     }
     return out.sort((a, b) => a.score - b.score);
@@ -73,16 +73,12 @@
     bus.emit('change'); return b;
   }
   function releaseDriver(d) {
-    d.bookingId = null; d.offerBookingId = null; d.atTarget = false; d.botAt = 0; d.willCancelAt = 0;
+    d.bookingId = null; d.offerBookingId = null; d.atTarget = false;
     d.path = d.path.slice(0, 1); d.status = 'available';
   }
   function makeOffer(b, c) {
     const d = c.d, t = now();
     b.offer = { driverId: d.id, expiresAt: t + S().settings.offerSec * 1000, etaMin: c.etaMin, km: c.km };
-    if (!d.human) {
-      const r = Math.random(), at = t + U.rnd(2, 8) * 1000;
-      b.offer.bot = { action: r < .78 ? 'accept' : r < .9 ? 'decline' : 'ignore', at: r < .9 ? at : Infinity };
-    }
     b.status = 'offered'; d.status = 'offered'; d.offerBookingId = b.id;
     stamp(b, `Offered to ${d.name} (${d.id}), ${c.etaMin.toFixed(1)} min away`); bus.emit('change');
   }
@@ -90,7 +86,6 @@
     const b = bk(d.offerBookingId); if (!b || b.status !== 'offered') return;
     b.offer = null; b.driverId = d.id; b.status = 'enroute'; d.status = 'enroute'; d.bookingId = b.id; d.offerBookingId = null;
     d.path = planPath(d, b.pickup); d.atTarget = false;
-    if (!d.human && Math.random() < S().settings.botCancelPct / 100) d.willCancelAt = now() + U.rnd(4, 10) * 1000;
     stamp(b, `${d.name} accepted`); b.acceptedSim = S().simSec;
     if (b.phone) sms(b.phone, `RideOps: ${d.name} (${d.model}, ${d.plate}) is on the way, ETA ${Math.max(1, Math.round(driverEta(b)))} min.`);
     bus.emit('change');
@@ -112,7 +107,7 @@
   function startTrip(d) {
     const b = bk(d.bookingId); if (!b || b.status !== 'arrived') return;
     b.status = 'ontrip'; d.status = 'ontrip'; b.startSim = S().simSec; stamp(b, 'Trip started');
-    const r = C.route(b.pickup, b.dropoff); b.tripKm = C.polyInfo(r).km; d.path = r.slice(1); d.atTarget = false; d.botAt = 0;
+    const r = C.route(b.pickup, b.dropoff); b.tripKm = C.polyInfo(r).km; d.path = r.slice(1); d.atTarget = false;
     bus.emit('change');
   }
   function completeTrip(d) {
@@ -154,7 +149,7 @@
     if (prev && prev !== d) { releaseDriver(prev); if (prev.human) bus.emit('driver-msg', `${b.id} was reassigned to another driver.`); }
     if (d.status === 'offered') { const ob = bk(d.offerBookingId); if (ob && ob !== b) { ob.offer = null; ob.status = 'pending'; } }
     b.offer = null; b.driverId = d.id; b.status = 'enroute'; b.forced = true; b.acceptedSim = S().simSec;
-    d.status = 'enroute'; d.bookingId = b.id; d.offerBookingId = null; d.path = planPath(d, b.pickup); d.atTarget = false; d.willCancelAt = 0;
+    d.status = 'enroute'; d.bookingId = b.id; d.offerBookingId = null; d.path = planPath(d, b.pickup); d.atTarget = false;
     stamp(b, `Manually assigned to ${d.name} by ${by || 'ops'}`); log(`${b.id} manually assigned to ${d.id} by ${by || 'ops'}`, 'ops');
     S().alerts.forEach(a => { if (a.bookingId === bid && !a.resolved && a.type !== 'sos') a.resolved = true; });
     if (d.human) bus.emit('driver-msg', `Ops assigned you ${b.id}. Head to pickup.`);
@@ -176,23 +171,6 @@
   function queueCall(c, why) { c.state = 'queued'; c.tq = now(); c.why = why; log(`☎️ ${U.fmtPhone(c.phone)} waiting for an operator (${why})`, 'ops'); bus.emit('change'); }
   function answerCall(id, op) { const c = S().calls.find(x => x.id === id); if (c && c.state === 'queued') { c.state = 'active'; c.operator = op || 'Dana'; c.tAns = now(); bus.emit('change'); } return c; }
   function endCall(id) { const c = S().calls.find(x => x.id === id); if (c && c.state !== 'ended') { c.state = 'ended'; c.tEnd = now(); bus.emit('change'); } }
-  /* random trip ends; ~1 in 8 trips is to or from the airport */
-  function tripEnds() {
-    let from = C.randomNode(), to = C.randomNode();
-    for (let i = 0; i < 6 && Math.abs(to.x - from.x) + Math.abs(to.y - from.y) < 300; i++) to = C.randomNode();
-    const ap = C.LM.find(l => l.id === 'airport');
-    if (ap && Math.random() < .125) { if (Math.random() < .5) from = { x: ap.x, y: ap.y }; else to = { x: ap.x, y: ap.y }; }
-    return { from, to };
-  }
-  function simInboundCall() {
-    const { from, to } = tripEnds();
-    const wheel = Math.random() < .2, name = U.pick(RO.SIM_NAMES);
-    const c = newCall('+3834' + U.ri(4, 9) + U.ri(100000, 999999), {
-      sim: true, name, request: { pickup: from, dropoff: to, vehicle: wheel ? 'access' : 'standard', tags: wheel ? ['wheelchair'] : [] },
-      notes: `${name} wants a taxi from ${C.label(from)} to ${C.label(to)}${wheel ? ' — needs wheelchair access' : ''}.`
-    });
-    queueCall(c, 'direct dial');
-  }
   function voipStart(did, from) {
     const d = drv(did); if (!d) return;
     S().voip = { driverId: did, from: from || 'ops', t0: now(), state: 'ringing', answerAt: (from === 'driver' || d.human) ? 0 : now() + 1500 };
@@ -218,37 +196,13 @@
       if (!d.path.length && (d.status === 'enroute' || d.status === 'ontrip')) d.atTarget = true;
     }
   }
-  function botStep(d) {
-    if (d.human || !d.online) return; const t = now();
-    if (d.status === 'enroute' && d.willCancelAt && t > d.willCancelAt) { driverCancel(d, U.pick(['Vehicle problem', 'Flat tyre', 'Personal emergency'])); return; }
-    const step = fn => { if (!d.botAt) d.botAt = t + 800; else if (t >= d.botAt) { d.botAt = 0; fn(d); } };
-    if (d.status === 'enroute' && d.atTarget) step(arrived);
-    else if (d.status === 'arrived') { if (!d.botAt) d.botAt = t + U.rnd(3, 7) * 1000; else if (t >= d.botAt) { d.botAt = 0; startTrip(d); } }
-    else if (d.status === 'ontrip' && d.atTarget) step(completeTrip);
-    else if (d.status === 'available' && !d.path.length && Math.random() < .03) {
-      const n = C.snap({ x: d.pos.x + U.ri(-3, 3) * 100, y: d.pos.y + U.ri(-3, 3) * 100 });
-      d.path = C.route(d.pos, n).slice(1);
-    }
-  }
   function dispatchStep() {
     const s = S(), t = now();
     for (const b of s.bookings) {
       if (b.status === 'scheduled' && s.simSec >= b.scheduledSim - s.settings.leadMin * 60) { b.status = 'pending'; b.pendingSince = t; stamp(b, 'Scheduled ride released to dispatch'); log(`${b.id} released to dispatch`); }
-      if (b.status === 'offered' && b.offer) {
-        const d = drv(b.offer.driverId), bot = b.offer.bot;
-        if (bot && t >= bot.at) bot.action === 'accept' ? acceptOffer(d) : declineOffer(d, 'declined');
-        else if (t >= b.offer.expiresAt) declineOffer(d, 'timeout');
-      }
+      if (b.status === 'offered' && b.offer && t >= b.offer.expiresAt) declineOffer(drv(b.offer.driverId), 'timeout');
     }
     if (s.settings.autoDispatch) for (const b of s.bookings) if (b.status === 'pending') { const c = candidates(b); if (c.length) makeOffer(b, c[0]); }
-  }
-  function spawnDemand() {
-    const { from, to } = tripEnds();
-    const r = Math.random(), veh = r < .8 ? 'standard' : r < .92 ? 'comfort' : r < .97 ? 'xl' : 'access', src = U.pick(['app', 'app', 'app', 'ivr', 'ops']);
-    createBooking({
-      source: src, phone: '+3834' + U.ri(4, 9) + U.ri(100000, 999999), name: U.pick(RO.SIM_NAMES), pickup: from, dropoff: to, vehicle: veh,
-      tags: veh === 'access' ? ['wheelchair'] : [], payment: U.pick(['card', 'card', 'wallet', 'corp', 'cash']), whenMin: Math.random() < .1 ? 20 : 0, operator: src === 'ops' ? 'Dana' : null
-    });
   }
   function slowStep() {
     const s = S(), t = now();
@@ -261,27 +215,19 @@
         else { b.pay = { state: 'paid' }; stamp(b, 'Payment captured ' + U.money(b.fare)); }
       }
     }
-    if (s.settings.demandOn && t >= s.demandNext) { spawnDemand(); s.demandNext = t + s.settings.demandEvery * 1000 * U.rnd(.6, 1.4); }
-    if (s.settings.demandOn && t >= s.callNext) { if (s.calls.filter(c => c.state === 'queued').length < 3) simInboundCall(); s.callNext = t + U.rnd(50, 90) * 1000; }
-    for (const c of s.calls) if (c.sim && c.state === 'queued' && t - c.tq > 150000) { c.state = 'ended'; c.abandoned = true; c.tEnd = t; log(`☎️ ${U.fmtPhone(c.phone)} abandoned the queue`, 'warn'); }
+    for (const c of s.calls) if (c.state === 'queued' && t - c.tq > 150000) { c.state = 'ended'; c.abandoned = true; c.tEnd = t; log(`☎️ ${U.fmtPhone(c.phone)} abandoned the queue`, 'warn'); }
     if (s.calls.length > 30) s.calls = s.calls.filter(c => c.state !== 'ended').concat(s.calls.filter(c => c.state === 'ended').slice(-8));
     if (s.voip && s.voip.state === 'ringing' && s.voip.answerAt && t >= s.voip.answerAt) voipAnswer();
   }
   function tick(dt) {
-    const s = S(); if (s.paused) return;
-    s.simSec += dt * s.speed; C.updateTraffic(s.simSec, dt);
-    moveDrivers(dt * s.speed); s.drivers.forEach(botStep); dispatchStep();
+    const s = S();
+    s.simSec += dt; C.updateTraffic(s.simSec, dt);
+    moveDrivers(dt); dispatchStep();
     s._acc = (s._acc || 0) + dt; if (s._acc >= 1) { s._acc = 0; slowStep(); }
     bus.emit('tick');
   }
-  function setPaused(p) {
-    const s = S(); if (p === s.paused) return;
-    if (p) s._pausedAt = now();
-    else { const dl = now() - s._pausedAt; s.bookings.forEach(b => { b.pendingSince += dl; if (b.offer) { b.offer.expiresAt += dl; if (b.offer.bot && isFinite(b.offer.bot.at)) b.offer.bot.at += dl; } }); s.drivers.forEach(d => { if (d.botAt) d.botAt += dl; if (d.willCancelAt) d.willCancelAt += dl; }); }
-    s.paused = p; bus.emit('change');
-  }
   function addJam() { const z = C.addJam(); log(`🚧 Major incident: heavy congestion building near ${C.label({ x: z.zx * 200 + 100, y: z.zy * 200 + 100 })}`, 'warn'); }
-  function reset() { RO.state = RO.newState(); bus.emit('reset'); bus.emit('change'); log('Simulation reset'); }
+  function reset() { RO.state = RO.newState(); bus.emit('reset'); bus.emit('change'); log('Dispatch state reset'); }
 
-  RO.E = { S, drv, bk, log, sms, raise, candidates, canServe, estimate, driverEta, assignable, createBooking, acceptOffer, declineOffer, arrived, startTrip, completeTrip, retryPayment, cancelBooking, driverCancel, assign, dispatchNow, sos, ackAlert, newCall, queueCall, answerCall, endCall, simInboundCall, voipStart, voipAnswer, voipEnd, tick, setPaused, addJam, reset, spawnDemand };
+  RO.E = { S, drv, bk, log, sms, raise, candidates, canServe, estimate, driverEta, assignable, createBooking, acceptOffer, declineOffer, arrived, startTrip, completeTrip, retryPayment, cancelBooking, driverCancel, assign, dispatchNow, sos, ackAlert, newCall, queueCall, answerCall, endCall, voipStart, voipAnswer, voipEnd, tick, addJam, reset };
 })(window.RO);

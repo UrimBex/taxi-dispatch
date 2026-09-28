@@ -125,9 +125,9 @@ class World {
       if (slot.model) d.model = slot.model;
       if (slot.userId) { d.human = true; d.userId = slot.userId; }
     }
-    // Once a company has customised ANY seat, the ones it never got to sit out of service instead of showing
-    // phantom demo drivers roaming the map — a company that hasn't touched its roster yet still runs the full
-    // built-in demo fleet (so a fresh install has something to look at before anyone's set up real drivers).
+    // Defensive: every seat already starts offline (see store.js) and can only go online once a real driver
+    // signs in and toggles on, which requires a bound login — so this is belt-and-suspenders, not the only
+    // thing keeping an unassigned seat quiet.
     const usedSlots = new Set(slots.filter(s => s.name || s.userId).map(s => s.slot));
     if (usedSlots.size > 0) this.state.drivers.forEach((d, i) => { if (!usedSlots.has(i)) d.online = false; });
     for (const u of clients) {

@@ -55,13 +55,12 @@
     return `<div class="rules"><h4>Automation rule engine</h4><p class="mut">Score = ETA × w<sub>eta</sub> + traffic × w<sub>traffic</sub> + (5 − rating) × w<sub>rating</sub>. Lowest score gets the offer.</p>
       ${sl('wETA', 'Weight: pickup ETA', 0, 3, .1)}${sl('wTraffic', 'Weight: traffic on route', 0, 3, .1)}${sl('wRating', 'Weight: driver rating', 0, 3, .1)}${sl('maxEtaMin', 'Max pickup ETA', 5, 40, 1, ' min')}
       <h4>Timers</h4>${sl('offerSec', 'Driver offer countdown', 5, 30, 1, ' s')}${sl('unassignedSec', 'Unassigned alert after', 20, 180, 5, ' s')}${sl('leadMin', 'Release scheduled rides', 2, 30, 1, ' min before')}
-      <h4>Modes</h4>${ck('autoDispatch', 'Auto-dispatch (off = operators assign manually)')}${ck('favorHuman', 'Demo bias: favour driver-app vehicles')}
-      <h4>Simulation</h4>${ck('demandOn', 'Generate background demand & calls')}${sl('demandEvery', 'New booking every', 8, 90, 1, ' s')}${sl('botCancelPct', 'Driver cancel rate', 0, 30, 1, '%')}
-      <div class="btns"><button class="btn" data-act="jam">🚧 Trigger traffic incident</button><button class="btn" data-act="spawn">➕ Spawn booking</button></div>
+      <h4>Modes</h4>${ck('autoDispatch', 'Auto-dispatch (off = operators assign manually)')}
+      <div class="btns"><button class="btn" data-act="jam">🚧 Trigger traffic incident</button></div>
       <p class="mut">Changes here apply to every ops user watching this company, immediately.</p></div>`;
   }
   function callsShell() {
-    return `<div class="sec"><div class="sec-h"><b>Call queue</b><button class="btn sm" data-act="simcall">+ Simulate inbound call</button></div><div id="call-queue"></div></div>
+    return `<div class="sec"><div class="sec-h"><b>Call queue</b></div><div id="call-queue"></div></div>
     <div class="sec"><div class="sec-h"><b id="op-ctx">Operator dashboard · new booking</b><button class="btn sm ghost" data-act="clear">Clear</button></div>
       <div id="op-caller" class="cti"></div>
       <div class="two"><label>Phone<input id="f-phone" type="tel" placeholder="+383 …"></label><label>Name<input id="f-name" placeholder="Caller name"></label></div>
@@ -216,7 +215,7 @@
       case 'dispatch': if (b) await E.dispatchNow(b.id); return;
       case 'calldrv': return E.voipStart((b && b.driverId) || (dr && dr.id));
       case 'voipend': return E.voipEnd(); case 'voipans': return E.voipAnswer();
-      case 'jam': return E.addJam(); case 'spawn': return E.spawnDemand(); case 'simcall': return E.simInboundCall();
+      case 'jam': return E.addJam();
       case 'pickpu': O.pick = O.pick === 'pu' ? null : 'pu'; return refresh(); case 'pickdr': O.pick = O.pick === 'dr' ? null : 'dr'; return refresh();
       case 'clear': clearForm(false); return fillForm();
       case 'uselast': { const cu = st().customers[U.normPhone(F.phone)], lt = cu && cu.trips[0]; if (lt) { prefill({ pickup: lt.pickup, dropoff: lt.dropoff, vehicle: lt.vehicle }); fillForm(); } return; }

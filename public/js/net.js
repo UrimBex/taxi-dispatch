@@ -73,19 +73,15 @@
     queueCall: (call, why) => rpc('ivrQueue', { callId: call && call.id, why }),
     endCall: id => rpc(RO.session && RO.session.role === 'ops' ? 'endCall' : 'ivrEndCall', { id }),
     answerCall: id => rpc('answerCall', { id }),
-    simInboundCall: () => rpc('simInboundCall', {}),
     voipStart: driverId => rpc('voipStart', { driverId }),
     voipAnswer: () => rpc('voipAnswer', {}),
     voipEnd: () => rpc('voipEnd', {}),
     addJam: () => rpc('addJam', {}),
-    spawnDemand: () => rpc('spawnDemand', {}),
-    setPaused: paused => rpc('setPaused', { paused }),
     reset: () => rpc('reset', {}),
-    // new: not present in the old client-only engine — used by main.js's top bar and ops.js's Rules tab, which
-    // used to mutate RO.state.speed / .settings directly (that would now just get overwritten by the next push).
+    // new: not present in the old client-only engine — used by ops.js's Rules tab, which used to mutate
+    // RO.state.settings directly (that would now just get overwritten by the next push).
     setOnline: online => rpc('setOnline', { online }),
     updateLocation: (lat, lng) => rpc('updateLocation', { lat, lng }),
-    setSpeed: speed => rpc('setSpeed', { speed }),
     updateSettings: patch => rpc('updateSettings', { patch }),
     ivrRebook: o => rpc('ivrRebook', o),
     saveFavorites: favorites => rpc('saveFavorites', { favorites }),

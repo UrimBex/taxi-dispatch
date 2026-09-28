@@ -46,9 +46,11 @@
     ['Teuta Sadiku', 'comfort', 'Audi A6'], ['Agron Deda', 'xl', 'Ford Tourneo Custom']
   ];
   RO.HUMAN_DRIVER = 'D07';
-  RO.SIM_NAMES = ['Ardit', 'Sara', 'Diar', 'Nora', 'Leart', 'Ema', 'Gent', 'Rina', 'Flamur', 'Zana', 'Besnik', 'Lulja'];
 
-  const DEFAULT_SETTINGS = { offerSec: 15, unassignedSec: 90, wETA: 1, wTraffic: .6, wRating: .8, maxEtaMin: 25, botCancelPct: 4, autoDispatch: true, favorHuman: true, leadMin: 10, demandOn: true, demandEvery: 28 };
+  const DEFAULT_SETTINGS = { offerSec: 15, unassignedSec: 90, wETA: 1, wTraffic: .6, wRating: .8, maxEtaMin: 25, autoDispatch: true, leadMin: 10 };
+  // Local seconds-since-midnight in whatever timezone this process runs in — the server runs on the
+  // operator's own machine, so this is the real local clock, not a sped-up or paused simulation clock.
+  const localNow = () => Math.floor(Date.now() / 1000) - new Date().getTimezoneOffset() * 60;
 
   function seedCustomers() {
     const mk = (a, b, fare) => ({ id: 'T' + Math.random().toString(36).slice(2, 6), at: 0, pickup: { ...a, label: C.label(a) }, dropoff: { ...b, label: C.label(b) }, fare, vehicle: 'standard' });
@@ -68,18 +70,18 @@
   RO.newState = function () {
     const keep = RO.state;
     const s = {
-      simSec: 8 * 3600 + 15 * 60, speed: 12, paused: false, seq: 1001,
+      simSec: localNow(), seq: 1001,
       drivers: [], bookings: [], calls: [], alerts: [], log: [], sms: [], voip: null,
       customers: keep ? keep.customers : load(CK, seedCustomers()),
       settings: keep ? keep.settings : Object.assign({}, DEFAULT_SETTINGS, load(SK, {})),
-      demandNext: Date.now() + 8000, callNext: Date.now() + 25000, stats: { done: 0, revenue: 0, waitSum: 0, waitN: 0 }
+      stats: { done: 0, revenue: 0, waitSum: 0, waitN: 0 }
     };
     ROSTER.forEach(([name, vehicle, model], i) => {
       const id = 'D' + U.pad(i + 1), pos = id === RO.HUMAN_DRIVER ? { x: 500, y: 400 } : C.randomNode();
       s.drivers.push({
         id, name, vehicle, model, plate: `0${U.ri(1, 9)}-${U.ri(100, 999)}-${String.fromCharCode(65 + U.ri(0, 25), 65 + U.ri(0, 25))}`,
-        rating: +(4.3 + Math.random() * .69).toFixed(2), pos, path: [], heading: 0, status: 'available', online: i < 12,
-        human: id === RO.HUMAN_DRIVER, bookingId: null, offerBookingId: null, atTarget: false, botAt: 0, willCancelAt: 0,
+        rating: +(4.3 + Math.random() * .69).toFixed(2), pos, path: [], heading: 0, status: 'available', online: false,
+        human: id === RO.HUMAN_DRIVER, bookingId: null, offerBookingId: null, atTarget: false,
         earnings: 0, trips: U.ri(0, 4), speedMul: U.rnd(.9, 1.1)
       });
     });
