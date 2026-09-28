@@ -94,7 +94,9 @@
       if (editingSlot != null) { const inp = $('#edit-user'); if (inp) inp.focus(); }
     }
     function fleetRowHTML(s) {
-      const base = `<td class="mut">${s.slot + 1}</td><td>${esc(s.name)}</td><td>${VEH_LABEL[s.vehicleType] || esc(s.vehicleType)}</td><td class="mut">${esc(s.model)}</td><td>${s.online ? '🟢 in service' : '⚪ out of service'}</td>`;
+      // Until a seat is customised (named or given a login), its name/vehicle/model are the built-in demo
+      // roster's placeholder values, not a real driver — don't show those as if they were.
+      const base = `<td class="mut">${s.slot + 1}</td><td>${s.customised ? esc(s.name) : '<span class="mut">— unassigned —</span>'}</td><td>${s.customised ? (VEH_LABEL[s.vehicleType] || esc(s.vehicleType)) : '<span class="mut">—</span>'}</td><td class="mut">${s.customised ? esc(s.model) : '—'}</td><td>${s.online ? '🟢 in service' : '⚪ out of service'}</td>`;
       if (s.slot === editingSlot) {
         return `<tr>${base}<td colspan="2"><div class="two"><input id="edit-user" placeholder="username" value="${esc(s.username || '')}" autocomplete="off"><input id="edit-pass" type="password" placeholder="${s.username ? 'new password' : 'password'}" autocomplete="new-password"></div>
           <div class="btns" style="margin-top:6px"><button class="btn sm primary" data-save-login="${s.slot}">Save</button><button class="btn sm ghost" data-cancel-login>Cancel</button></div></td></tr>`;

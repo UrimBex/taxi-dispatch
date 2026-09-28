@@ -70,11 +70,15 @@ const DRIVER_ACTIONS = {
   // Silently ignored (not an error) when the fix isn't near any mapped road at all — e.g. testing from outside
   // the service area, or before a fix arrives — so the caller falls back to simulated movement instead.
   updateLocation: (ctx, a) => {
-    const d = ctx.driver; if (!d || !d.online) return { applied: false, reason: 'offline' };
+    const d = ctx.driver; if (!d || !d.online) { console.log(`[gps] ${ctx.name || '?'}: rejected — driver not online`); return { applied: false, reason: 'offline' }; }
     const lat = Number(a.lat), lng = Number(a.lng);
-    if (!isFinite(lat) || !isFinite(lng)) return { applied: false, reason: 'invalid' };
+    if (!isFinite(lat) || !isFinite(lng)) { console.log(`[gps] ${d.id} ${d.name}: rejected — invalid coords (${a.lat}, ${a.lng})`); return { applied: false, reason: 'invalid' }; }
     const hit = ctx.C.nearestOnRoad(lat, lng);
-    if (!hit || hit.distKm > 5) return { applied: false, reason: 'outside-service-area', distKm: hit ? +hit.distKm.toFixed(1) : null };
+    if (!hit || hit.distKm > 5) {
+      console.log(`[gps] ${d.id} ${d.name}: rejected — ${lat},${lng} is ${hit ? hit.distKm.toFixed(2) + ' km' : 'nowhere'} from the mapped area (need <=5km)`);
+      return { applied: false, reason: 'outside-service-area', distKm: hit ? +hit.distKm.toFixed(1) : null };
+    }
+    console.log(`[gps] ${d.id} ${d.name}: applied — ${lat},${lng}, ${(hit.distKm * 1000).toFixed(0)}m from nearest mapped road`);
 
     d.pos = { x: hit.x, y: hit.y };
     // The grid is ~1.1 km per cell (see city.js), so the snapped {x,y} above — used for routing/ETA, which have

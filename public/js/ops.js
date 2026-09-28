@@ -43,7 +43,9 @@
     return rows || '<p class="empty">No alerts. Unassigned bookings, driver cancellations, payment failures and SOS signals appear here.</p>';
   }
   function driversHTML() {
-    return '<div class="list">' + st().drivers.map(d => {
+    // Seats nobody has customised yet are still running the built-in demo roster's placeholder name/vehicle —
+    // not a real driver, and nobody can ever sign in to move one, so there's nothing for ops to dispatch here.
+    return '<div class="list">' + st().drivers.filter(d => d.human).map(d => {
       const b = E.bk(d.bookingId || d.offerBookingId);
       return `<div class="row ${O.sel && O.sel.id === d.id ? 'sel' : ''}" data-drv="${d.id}"><span class="dot" style="background:${d.online ? MV.STATUS_COL[d.status] : MV.STATUS_COL.offline}"></span><div class="main"><b>${d.id}</b> ${U.esc(d.name)}${d.human ? ' <em>(driver app)</em>' : ''}<small>${V[d.vehicle].label} · ★${d.rating} · ${d.trips} trips · ${U.money(d.earnings)}${b ? ' · ' + b.id : ''}</small></div><span class="chip ds-${d.online ? d.status : 'offline'}">${d.online ? DST[d.status] : 'Offline'}</span></div>`;
     }).join('') + '</div>';
