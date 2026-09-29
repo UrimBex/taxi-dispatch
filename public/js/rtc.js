@@ -15,6 +15,15 @@
 
   let pc = null, localStream = null, currentDriverId = null, audioEl = null, unlockArmed = false;
   let pendingRemote = null, pendingIce = [];
+  // A call can fail and reset itself (teardownConnection/hangup) faster than a human can type a debug command —
+  // debug() alone then just shows "nothing happened", which looks identical to "never started". Keep a running
+  // trail of what actually happened instead, printed live and readable afterwards via RO.RTC.log().
+  const events = [];
+  function log(...args) {
+    const line = `[rtc ${new Date().toISOString().slice(11, 23)}] ` + args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+    events.push(line); if (events.length > 100) events.shift();
+    console.log(line);
+  }
 
   function ensureAudioEl() {
     if (audioEl) return audioEl;
@@ -44,9 +53,11 @@
 
   function newPeerConnection(driverId) {
     const p = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    p.onicecandidate = e => { if (e.candidate) RO.live.sendRtc(driverId, 'ice', e.candidate.toJSON()); };
-    p.ontrack = e => { ensureAudioEl().srcObject = e.streams[0] || new MediaStream([e.track]); tryPlay(); };
+    p.onicecandidate = e => { if (e.candidate) { log('local ICE candidate ready, sending'); RO.live.sendRtc(driverId, 'ice', e.candidate.toJSON()); } else log('local ICE gathering complete'); };
+    p.ontrack = e => { log('ontrack: remote audio arrived'); ensureAudioEl().srcObject = e.streams[0] || new MediaStream([e.track]); tryPlay(); };
+    p.oniceconnectionstatechange = () => log('iceConnectionState ->', p.iceConnectionState);
     p.onconnectionstatechange = () => {
+      log('connectionState ->', p.connectionState);
       bus.emit('rtc-state', p.connectionState);
       if (p.connectionState === 'failed' || p.connectionState === 'closed') hangup();
     };
@@ -55,14 +66,17 @@
 
   async function getMic() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser/context has no microphone access (needs HTTPS or localhost).');
-    if (!localStream) localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    if (!localStream) { log('requesting microphone...'); localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); log('microphone granted', localStream.getTracks().map(t => t.label)); }
     return localStream;
   }
 
   async function applyRemote(driverId, sdp) {
-    if (!pc || currentDriverId !== driverId) { pendingRemote = { driverId, sdp }; return; }
+    if (!pc || currentDriverId !== driverId) { log('buffering remote', sdp.type, '(no active call yet for', driverId, ')'); pendingRemote = { driverId, sdp }; return; }
+    log('applying remote', sdp.type);
     await pc.setRemoteDescription(sdp);
-    for (const c of pendingIce.splice(0)) { try { await pc.addIceCandidate(c); } catch (e) { } }
+    const queued = pendingIce.splice(0);
+    if (queued.length) log('flushing', queued.length, 'queued ICE candidate(s)');
+    for (const c of queued) { try { await pc.addIceCandidate(c); } catch (e) { log('queued ICE candidate rejected:', e.message); } }
   }
 
   // Closes any existing connection/stream WITHOUT touching pendingRemote/pendingIce — those hold a signal that
@@ -77,6 +91,7 @@
   }
 
   async function startAsCaller(driverId) {
+    log('startAsCaller', driverId);
     teardownConnection();
     currentDriverId = driverId;
     try {
@@ -85,11 +100,13 @@
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      log('sending offer');
       RO.live.sendRtc(driverId, 'offer', offer.toJSON ? offer.toJSON() : { type: offer.type, sdp: offer.sdp });
-    } catch (err) { bus.emit('rtc-error', err.message || String(err)); hangup(); }
+    } catch (err) { log('FAILED:', err.name, err.message); bus.emit('rtc-error', err.message || String(err)); hangup(); }
   }
 
   async function startAsCallee(driverId) {
+    log('startAsCallee', driverId, 'pendingRemote for this driver?', !!(pendingRemote && pendingRemote.driverId === driverId));
     teardownConnection();
     currentDriverId = driverId;
     try {
@@ -97,22 +114,26 @@
       pc = newPeerConnection(driverId);
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
       if (pendingRemote && pendingRemote.driverId === driverId) { await applyRemote(driverId, pendingRemote.sdp); pendingRemote = null; }
+      else log('WARNING: no offer buffered for', driverId, '— creating an answer with nothing to answer');
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
+      log('sending answer');
       RO.live.sendRtc(driverId, 'answer', answer.toJSON ? answer.toJSON() : { type: answer.type, sdp: answer.sdp });
-    } catch (err) { bus.emit('rtc-error', err.message || String(err)); hangup(); }
+    } catch (err) { log('FAILED:', err.name, err.message); bus.emit('rtc-error', err.message || String(err)); hangup(); }
   }
 
   function hangup() {
+    log('hangup');
     teardownConnection();
     pendingRemote = null; pendingIce = [];
   }
 
   bus.on('rtc', async msg => {
-    if (msg.kind === 'offer' || msg.kind === 'answer') applyRemote(msg.driverId, msg.payload).catch(err => bus.emit('rtc-error', err.message || String(err)));
+    log('received', msg.kind, 'from', msg.from, 'for', msg.driverId);
+    if (msg.kind === 'offer' || msg.kind === 'answer') applyRemote(msg.driverId, msg.payload).catch(err => { log('setRemoteDescription FAILED:', err.message); bus.emit('rtc-error', err.message || String(err)); });
     else if (msg.kind === 'ice') {
-      if (pc && currentDriverId === msg.driverId && pc.remoteDescription) pc.addIceCandidate(msg.payload).catch(() => { });
-      else pendingIce.push(msg.payload);
+      if (pc && currentDriverId === msg.driverId && pc.remoteDescription) pc.addIceCandidate(msg.payload).catch(err => log('addIceCandidate failed:', err.message));
+      else { log('queueing ICE candidate (no matching active call yet)'); pendingIce.push(msg.payload); }
     }
   });
 
@@ -132,5 +153,7 @@
     };
   }
 
-  RO.RTC = { startAsCaller, startAsCallee, hangup, debug };
+  // RO.RTC.log() — the running event trail (what actually happened, in order), for when the call has already
+  // failed/reset itself by the time you get to type a command. RO.RTC.debug() is the live snapshot right now.
+  RO.RTC = { startAsCaller, startAsCallee, hangup, debug, log: () => events.slice() };
 })(window.RO);
