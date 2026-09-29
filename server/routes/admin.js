@@ -225,4 +225,53 @@ router.post('/companies/:id/fleet/bulk', async (req, res) => {
   res.status(201).json({ ok: true, drivers: created });
 });
 
+// Ops staff logins — unlike drivers, these aren't tied to a fleet seat, just a plain list per company.
+router.get('/companies/:id/staff', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const staff = await prisma.user.findMany({ where: { companyId: company.id, role: 'OPS' }, orderBy: { name: 'asc' } });
+  res.json(staff.map(u => ({ id: u.id, name: u.name, username: u.username })));
+});
+
+router.post('/companies/:id/staff', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const { name, username, password } = req.body || {};
+  if (!name || !username || !password) return res.status(400).json({ error: 'name, username and password are required.' });
+  if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+  if (await prisma.user.findUnique({ where: { username: String(username).toLowerCase() } })) return res.status(409).json({ error: `Username "${username}" is already taken.` });
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const user = await prisma.user.create({ data: { role: 'OPS', companyId: company.id, name, username: String(username).toLowerCase(), passwordHash } });
+  res.status(201).json({ id: user.id, name: user.name, username: user.username });
+});
+
+// Resets a staff member's password (and/or their display name) — same reasoning as the driver login screen:
+// the form always collects a fresh password rather than showing or reusing the old one.
+router.put('/companies/:id/staff/:userId', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const user = await prisma.user.findUnique({ where: { id: req.params.userId } });
+  if (!user || user.companyId !== company.id || user.role !== 'OPS') return res.status(404).json({ error: 'No such staff login on this company.' });
+  const { name, password } = req.body || {};
+  const data = {};
+  if (name) data.name = name;
+  if (password) {
+    if (String(password).length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+    data.passwordHash = await bcrypt.hash(password, 12);
+  }
+  if (!Object.keys(data).length) return res.status(400).json({ error: 'Nothing to update — provide a name and/or a password.' });
+  await prisma.user.update({ where: { id: user.id }, data });
+  res.json({ ok: true });
+});
+
+// Blocks removing the last ops login on a company — that would lock everyone out of dispatch with no way back
+// in short of the superuser recreating one by hand.
+router.delete('/companies/:id/staff/:userId', async (req, res) => {
+  const company = await requireCompany(req, res); if (!company) return;
+  const user = await prisma.user.findUnique({ where: { id: req.params.userId } });
+  if (!user || user.companyId !== company.id || user.role !== 'OPS') return res.status(404).json({ error: 'No such staff login on this company.' });
+  const staffCount = await prisma.user.count({ where: { companyId: company.id, role: 'OPS' } });
+  if (staffCount <= 1) return res.status(409).json({ error: 'This is the only ops login left — add another one before removing this one.' });
+  await prisma.user.delete({ where: { id: user.id } }); // cascades: signs them out immediately
+  res.json({ ok: true });
+});
+
 module.exports = router;
