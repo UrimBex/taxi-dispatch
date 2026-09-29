@@ -92,7 +92,13 @@
     caller();
   }
   function caller() {
-    const c = F.callId && st().calls.find(x => x.id === F.callId), cu = st().customers[U.normPhone(F.phone)], el = U.$('#op-caller', root); if (!el) return;
+    const raw = F.callId && st().calls.find(x => x.id === F.callId), cu = st().customers[U.normPhone(F.phone)], el = U.$('#op-caller', root); if (!el) return;
+    // The call object stays in st().calls forever once created (just marked state:'ended') — it existing is not
+    // the same as it still being connected. If the OTHER side hung up (we didn't click "End call" ourselves,
+    // so F.callId was never cleared for it), catch that here: drop the audio and the "on call with X" display
+    // instead of leaving both showing a call that's actually over.
+    if (raw && raw.state === 'ended') { RO.RTC.hangup(); F.callId = null; }
+    const c = raw && raw.state !== 'ended' ? raw : null;
     let h = ''; if (c) h += `<div class="pop">☎️ <b>${U.esc(U.fmtPhone(c.phone))}</b> · connected ${U.mmss((Date.now() - c.tAns) / 1000)}${rtcNote}${c.notes ? `<br>📝 ${U.esc(c.notes)}` : ''}${c.bookingId ? `<br>✅ Booked ${c.bookingId}` : ''}</div>`;
     if (cu) { const lt = cu.trips[0]; h += `<div class="pop">👤 <b>${U.esc(cu.name)}</b> — repeat caller · ${cu.trips.length} trips${lt ? `<br>Last: ${U.esc(lt.pickup.label)} → ${U.esc(lt.dropoff.label)} <button class="btn sm" data-act="uselast">Use</button>` : ''}</div>`; }
     U.setHTML(el, h);
