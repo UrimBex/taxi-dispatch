@@ -65,8 +65,19 @@
     for (const c of pendingIce.splice(0)) { try { await pc.addIceCandidate(c); } catch (e) { } }
   }
 
+  // Closes any existing connection/stream WITHOUT touching pendingRemote/pendingIce — those hold a signal that
+  // may have arrived for the call about to start (the offer almost always beats a human clicking "Answer" to
+  // it), and wiping them here would throw it away right before it's needed. hangup() (below) is the one that
+  // actually discards them, once a call is genuinely over rather than just starting.
+  function teardownConnection() {
+    if (pc) { try { pc.close(); } catch (e) { } pc = null; }
+    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+    if (audioEl) audioEl.srcObject = null;
+    currentDriverId = null;
+  }
+
   async function startAsCaller(driverId) {
-    hangup();
+    teardownConnection();
     currentDriverId = driverId;
     try {
       const stream = await getMic();
@@ -79,7 +90,7 @@
   }
 
   async function startAsCallee(driverId) {
-    hangup();
+    teardownConnection();
     currentDriverId = driverId;
     try {
       const stream = await getMic();
@@ -93,10 +104,8 @@
   }
 
   function hangup() {
-    if (pc) { try { pc.close(); } catch (e) { } pc = null; }
-    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-    if (audioEl) audioEl.srcObject = null;
-    currentDriverId = null; pendingRemote = null; pendingIce = [];
+    teardownConnection();
+    pendingRemote = null; pendingIce = [];
   }
 
   bus.on('rtc', async msg => {
@@ -107,5 +116,21 @@
     }
   });
 
-  RO.RTC = { startAsCaller, startAsCallee, hangup };
+  // Manual diagnostic — run RO.RTC.debug() in the browser console during/after a call to see what's actually
+  // happening (which side stalled: no local media, no remote description, no ICE candidates, etc.) instead of
+  // waiting for something to throw.
+  function debug() {
+    if (!pc) return { active: false, currentDriverId, pendingRemote: !!pendingRemote, pendingIceCount: pendingIce.length };
+    return {
+      active: true, currentDriverId,
+      connectionState: pc.connectionState, iceConnectionState: pc.iceConnectionState, signalingState: pc.signalingState,
+      hasLocalDescription: !!pc.localDescription, hasRemoteDescription: !!pc.remoteDescription,
+      localTracks: localStream ? localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, muted: t.muted, readyState: t.readyState })) : [],
+      remoteTracks: pc.getReceivers().map(r => r.track && ({ kind: r.track.kind, enabled: r.track.enabled, muted: r.track.muted, readyState: r.track.readyState })).filter(Boolean),
+      audioElHasSrc: !!(audioEl && audioEl.srcObject), audioElPaused: audioEl ? audioEl.paused : null,
+      pendingRemote: !!pendingRemote, pendingIceCount: pendingIce.length
+    };
+  }
+
+  RO.RTC = { startAsCaller, startAsCallee, hangup, debug };
 })(window.RO);
