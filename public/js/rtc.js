@@ -13,7 +13,7 @@
   // in this module needs to change.
   const ICE_SERVERS = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 
-  let pc = null, localStream = null, currentDriverId = null, audioEl = null;
+  let pc = null, localStream = null, currentDriverId = null, audioEl = null, unlockArmed = false;
   let pendingRemote = null, pendingIce = [];
 
   function ensureAudioEl() {
@@ -23,11 +23,29 @@
     document.body.appendChild(audioEl);
     return audioEl;
   }
+  // <audio autoplay> alone isn't reliable here: the track arrives asynchronously, well after the click that
+  // started the call, and browsers increasingly block audio playback that isn't tied directly to a user
+  // gesture — the exact "call connected but silent" symptom. Explicitly play() it, and if that's blocked,
+  // unlock it on the next click anywhere (answering/calling in the first place already proves the user is
+  // interacting with the page, so this fires almost immediately in practice).
+  function tryPlay() {
+    const el = ensureAudioEl();
+    const p = el.play();
+    if (p && p.catch) p.catch(() => armUnlock());
+  }
+  function armUnlock() {
+    bus.emit('rtc-error', 'Tap anywhere to enable audio');
+    if (unlockArmed) return;
+    unlockArmed = true;
+    document.addEventListener('click', function handler() {
+      unlockArmed = false; document.removeEventListener('click', handler); tryPlay();
+    }, { once: true });
+  }
 
   function newPeerConnection(driverId) {
     const p = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     p.onicecandidate = e => { if (e.candidate) RO.live.sendRtc(driverId, 'ice', e.candidate.toJSON()); };
-    p.ontrack = e => { ensureAudioEl().srcObject = e.streams[0]; };
+    p.ontrack = e => { ensureAudioEl().srcObject = e.streams[0] || new MediaStream([e.track]); tryPlay(); };
     p.onconnectionstatechange = () => {
       bus.emit('rtc-state', p.connectionState);
       if (p.connectionState === 'failed' || p.connectionState === 'closed') hangup();
