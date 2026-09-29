@@ -55,7 +55,7 @@
         <label>Phone number<input id="lg-phone" type="tel" placeholder="+383 44 000 000"></label>
         <div class="err" id="lg-perr"></div>
         <button class="btn primary" type="submit">Send code</button>
-        <small>We text you a 6-digit code. Demo: <a href="#" id="lg-demo">+383 44 111 222</a> is a returning rider with saved places; any other number registers a new rider.</small>
+        <small>We'll text you a 6-digit code to confirm it's you.</small>
       </form>
       <form id="lg-f2" autocomplete="off" style="display:none">
         <p class="sentto">We sent a 6-digit code to <b id="lg-sentto"></b></p>
@@ -71,8 +71,6 @@
       <div class="err" id="lg-err"></div>
       <button class="btn primary" type="submit">Sign in</button>
     </form>
-    <div class="demo-accts" id="demo-accts"></div>
-    <small>Prototype: the driver, ops and superuser logins shown here are demo accounts — change their passwords before this is reachable by anyone else.</small>
   </div>
 </div>
 <script src="vendor/leaflet.js"></script>

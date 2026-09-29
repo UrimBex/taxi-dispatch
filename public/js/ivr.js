@@ -32,7 +32,7 @@
   }
   async function dial(phone) {
     const c = await E.newCall(phone); Object.assign(iv, { callId: c.id, phone, step: 'menu', lines: [], t0: Date.now(), seen: 'ivr', bookedSeen: null });
-    say('sys', `Dialling 0800-RIDEOPS from ${U.fmtPhone(phone)}…`); setTimeout(() => { if (iv.step === 'menu') say('ivr', menuText()); }, 500);
+    say('sys', `Dialling 0800-TAXIARDI from ${U.fmtPhone(phone)}…`); setTimeout(() => { if (iv.step === 'menu') say('ivr', menuText()); }, 500);
   }
   async function hangup(msg) {
     if (iv.callId) await E.endCall(iv.callId);
@@ -62,7 +62,7 @@
 
   function ui() {
     const known = Object.values(st().customers).map(c => `<option value="${c.phone}">${U.esc(c.name)} — ${U.fmtPhone(c.phone)} (repeat caller)</option>`).join('');
-    root.innerHTML = `<div class="ivr-wrap" id="ivr-wrap"><div class="ivr-idle" id="ivr-idle"><div class="logo">☎️</div><h2>Call 0800-RIDEOPS</h2><p>Simulate a customer ringing the taxi line. The IVR recognises repeat callers by number and hands complex calls to the operators.</p>
+    root.innerHTML = `<div class="ivr-wrap" id="ivr-wrap"><div class="ivr-idle" id="ivr-idle"><div class="logo">☎️</div><h2>Call 0800-TAXIARDI</h2><p>Simulate a customer ringing the taxi line. The IVR recognises repeat callers by number and hands complex calls to the operators.</p>
       <label>Calling from<select id="iv-sel">${known}<option value="+38349555010">Unknown caller — +383 49 555 010</option><option value="custom">Custom number…</option></select></label>
       <input id="iv-custom" type="tel" placeholder="+383 4x xxx xxx" style="display:none">
       <label class="chk"><input type="checkbox" id="iv-tts"> Read IVR prompts aloud</label><button class="btn primary" data-act="dial">📞 Call</button></div>

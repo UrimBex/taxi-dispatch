@@ -69,9 +69,6 @@
     U.$$('#lg-tabs button').forEach(b => b.classList.toggle('on', b.dataset.r === t));
     U.$('#lg-client').style.display = t === 'client' ? '' : 'none';
     U.$('#login-form').style.display = t === 'client' ? 'none' : '';
-    U.$('#demo-accts').innerHTML = t === 'driver' ? '<button type="button" class="acct" data-u="driver" data-p="driver-demo-pass"><span>🚗</span><div><b>Driver</b><small>Demo login (the seeded driver, Ben Krasniqi)</small></div><code>driver / driver-demo-pass</code></button>'
-      : t === 'ops' ? '<button type="button" class="acct" data-u="ops" data-p="ops-demo-pass"><span>🎧</span><div><b>Ops room</b><small>Demo login</small></div><code>ops / ops-demo-pass</code></button>'
-      : t === 'superuser' ? '<button type="button" class="acct" data-u="superadmin" data-p="super-admin-pass"><span>🛡️</span><div><b>Superuser</b><small>Platform admin — create companies, manage fleets at /admin.html</small></div><code>superadmin / super-admin-pass</code></button>' : '';
     U.$('#lg-user').value = ''; U.$('#lg-pass').value = ''; U.setText(U.$('#lg-err'), '');
   }
   function showLogin(msg) {
@@ -84,7 +81,6 @@
   U.$('#lg-tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTab(b.dataset.r); });
 
   // client: phone number -> text-message code
-  U.$('#lg-demo').addEventListener('click', e => { e.preventDefault(); U.$('#lg-phone').value = '+383 44 111 222'; });
   let pendingPhone = null;
   U.$('#lg-f1').addEventListener('submit', async e => {
     e.preventDefault();
@@ -107,10 +103,6 @@
   U.$('#lg-back').addEventListener('click', e => { e.preventDefault(); U.$('#lg-toast').innerHTML = ''; U.$('#lg-f2').style.display = 'none'; U.$('#lg-f1').style.display = ''; U.$('#lg-phone').focus(); });
 
   // driver / ops: username + password
-  U.$('#demo-accts').addEventListener('click', e => {
-    const b = e.target.closest('.acct'); if (!b) return;
-    U.$('#lg-user').value = b.dataset.u; U.$('#lg-pass').value = b.dataset.p; U.setText(U.$('#lg-err'), ''); U.$('#lg-pass').focus();
-  });
   U.$('#login-form').addEventListener('submit', async e => {
     e.preventDefault();
     let resp;
