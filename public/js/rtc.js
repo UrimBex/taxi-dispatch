@@ -27,7 +27,10 @@
     if (debugBox) return debugBox;
     debugBox = document.createElement('div');
     debugBox.id = 'rtc-debug';
-    debugBox.style.cssText = 'position:fixed;left:8px;bottom:8px;max-width:92vw;max-height:40vh;overflow:auto;background:#000c;color:#0f0;font:10px/1.4 ui-monospace,Consolas,monospace;padding:6px 8px;border-radius:6px;z-index:99999;white-space:pre-wrap;pointer-events:none';
+    // Top-left, not bottom — the driver's call toast sits at the bottom of the screen (.d-toast) and the ops
+    // incoming-call banner sits top-RIGHT (#voip-modal); this was visually covering the driver's Hang Up button
+    // even with pointer-events:none, since that only stops clicks, not hiding what's underneath from view.
+    debugBox.style.cssText = 'position:fixed;left:8px;top:8px;max-width:70vw;max-height:26vh;overflow:auto;background:#000c;color:#0f0;font:10px/1.4 ui-monospace,Consolas,monospace;padding:6px 8px;border-radius:6px;z-index:99999;white-space:pre-wrap;pointer-events:none';
     document.body.appendChild(debugBox);
     return debugBox;
   }
