@@ -19,10 +19,24 @@
   // debug() alone then just shows "nothing happened", which looks identical to "never started". Keep a running
   // trail of what actually happened instead, printed live and readable afterwards via RO.RTC.log().
   const events = [];
+  let debugBox = null;
+  // Visible on-screen instead of only in the console — a call can fail and reset before there's time to open
+  // DevTools and type anything, and relaying console output by hand has turned out to be its own source of
+  // errors. A screenshot of the page now shows exactly what happened.
+  function ensureDebugBox() {
+    if (debugBox) return debugBox;
+    debugBox = document.createElement('div');
+    debugBox.id = 'rtc-debug';
+    debugBox.style.cssText = 'position:fixed;left:8px;bottom:8px;max-width:92vw;max-height:40vh;overflow:auto;background:#000c;color:#0f0;font:10px/1.4 ui-monospace,Consolas,monospace;padding:6px 8px;border-radius:6px;z-index:99999;white-space:pre-wrap;pointer-events:none';
+    document.body.appendChild(debugBox);
+    return debugBox;
+  }
+  function renderDebugBox() { ensureDebugBox().textContent = events.slice(-12).join('\n'); }
   function log(...args) {
     const line = `[rtc ${new Date().toISOString().slice(11, 23)}] ` + args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
     events.push(line); if (events.length > 100) events.shift();
     console.log(line);
+    renderDebugBox();
   }
 
   function ensureAudioEl() {
