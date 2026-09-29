@@ -30,9 +30,20 @@ async function uniqueSlug(name) {
 router.get('/companies', async (req, res) => {
   const companies = await prisma.company.findMany({
     orderBy: { createdAt: 'asc' },
-    include: { _count: { select: { users: true, drivers: true, trips: true } } }
+    include: {
+      // `users` mixes ops staff, driver logins and riders under one table — count them apart rather than
+      // showing one combined "Staff" number that's actually everyone.
+      _count: { select: { drivers: true, trips: true } },
+      users: { select: { role: true } }
+    }
   });
-  res.json(companies);
+  res.json(companies.map(c => {
+    const { users, ...rest } = c;
+    return Object.assign(rest, { _count: Object.assign(rest._count, {
+      staff: users.filter(u => u.role === 'OPS').length,
+      riders: users.filter(u => u.role === 'CLIENT').length
+    }) });
+  }));
 });
 
 router.post('/companies', async (req, res) => {

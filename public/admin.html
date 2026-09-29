@@ -28,7 +28,7 @@
     <a href="/" style="color:var(--info)">Back to the app →</a></p>
 
   <h2>Companies</h2>
-  <div class="card"><table id="companies"><thead><tr><th>Name</th><th>Slug</th><th>Staff</th><th>Drivers</th><th>Trips</th><th></th></tr></thead><tbody></tbody></table></div>
+  <div class="card"><table id="companies"><thead><tr><th>Name</th><th>Slug</th><th>Ops staff</th><th>Driver seats</th><th>Riders</th><th>Trips</th><th></th></tr></thead><tbody></tbody></table></div>
 
   <div class="card">
     <b>New company</b>
@@ -73,7 +73,7 @@
 
     async function loadCompanies() {
       const companies = await api('/api/admin/companies');
-      $('#companies tbody').innerHTML = companies.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.slug)}</td><td>${c._count.users}</td><td>${c._count.drivers}</td><td>${c._count.trips}</td><td><button class="btn sm" data-pick="${c.id}">Manage fleet</button></td></tr>`).join('') || '<tr><td colspan="6" class="mut">No companies yet — create one below.</td></tr>';
+      $('#companies tbody').innerHTML = companies.map(c => `<tr><td>${esc(c.name)}</td><td>${esc(c.slug)}</td><td>${c._count.staff}</td><td>${c._count.drivers}</td><td>${c._count.riders}</td><td>${c._count.trips}</td><td><button class="btn sm" data-pick="${c.id}">Manage fleet</button></td></tr>`).join('') || '<tr><td colspan="7" class="mut">No companies yet — create one below.</td></tr>';
       const sel = $('#f-driver-company'), had = sel.value;
       sel.innerHTML = companies.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
       if (had && companies.some(c => c.id === had)) sel.value = had;
