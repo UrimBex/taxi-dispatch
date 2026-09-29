@@ -110,7 +110,8 @@
     if (dv.key === 'idle') {
       const waiting = s.bookings.filter(b => b.status === 'pending').length, mine = d;
       U.setHTML(U.$('#d-idle', root), `<div class="stat ok"><b>You're online</b><small>Waiting for trip requests… ${waiting ? waiting + ' rider' + (waiting > 1 ? 's' : '') + ' waiting in the city' : ''}</small></div>
-        <div class="kv"><div><b>${mine.trips}</b><small>trips</small></div><div><b>${U.money(mine.earnings)}</b><small>earned</small></div><div><b>${mine.rating}</b><small>rating</small></div></div>`);
+        <div class="kv"><div><b>${mine.trips}</b><small>trips</small></div><div><b>${U.money(mine.earnings)}</b><small>earned</small></div><div><b>${mine.rating}</b><small>rating</small></div></div>
+        <button class="btn sm" data-act="callops">🎧 Call Ops</button>`);
       let over = MV.car(d, { s: 1.8, me: true }); s.bookings.filter(b => b.status === 'pending').forEach(b => { over += MV.pin(b.pickup, { color: '#f59e0b', s: 1.2 }); });
       dv.map.draw('', over); dv.map.centerOn(MV.driverLL(d), 520);
     } else if (dv.key.startsWith('offer')) {
