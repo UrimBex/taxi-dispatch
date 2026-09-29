@@ -69,7 +69,7 @@
     stamp(b, `Booked via ${SRC[b.source] || b.source}${b.operator ? ' by ' + b.operator : ''}`);
     s.bookings.push(b);
     log(`${b.id} ${b.source === 'ops' ? '🎧' : b.source === 'ivr' ? '☎️' : '📱'} ${pickup.label} → ${dropoff.label} (${V[veh].label}${when ? ', in ' + when + ' min' : ''})`);
-    if (b.phone) sms(b.phone, `RideOps: booking ${b.id} confirmed. ${when ? 'Pickup at ' + U.clock(b.scheduledSim) : 'Finding your driver now'}. Est. ${U.money(b.est.fare)}.`);
+    if (b.phone) sms(b.phone, `Taxi Ardi: booking ${b.id} confirmed. ${when ? 'Pickup at ' + U.clock(b.scheduledSim) : 'Finding your driver now'}. Est. ${U.money(b.est.fare)}.`);
     bus.emit('change'); return b;
   }
   function releaseDriver(d) {
@@ -87,7 +87,7 @@
     b.offer = null; b.driverId = d.id; b.status = 'enroute'; d.status = 'enroute'; d.bookingId = b.id; d.offerBookingId = null;
     d.path = planPath(d, b.pickup); d.atTarget = false;
     stamp(b, `${d.name} accepted`); b.acceptedSim = S().simSec;
-    if (b.phone) sms(b.phone, `RideOps: ${d.name} (${d.model}, ${d.plate}) is on the way, ETA ${Math.max(1, Math.round(driverEta(b)))} min.`);
+    if (b.phone) sms(b.phone, `Taxi Ardi: ${d.name} (${d.model}, ${d.plate}) is on the way, ETA ${Math.max(1, Math.round(driverEta(b)))} min.`);
     bus.emit('change');
   }
   function declineOffer(d, why) {
@@ -101,7 +101,7 @@
     const b = bk(d.bookingId); if (!b || b.status !== 'enroute') return;
     b.status = 'arrived'; d.status = 'arrived'; d.atTarget = false; b.arrivedSim = S().simSec; stamp(b, 'Driver arrived at pickup');
     if (b.acceptedSim != null) { S().stats.waitSum += (b.arrivedSim - b.createdSim) / 60; S().stats.waitN++; }
-    if (b.phone) sms(b.phone, `RideOps: your driver has arrived (${d.plate}).`);
+    if (b.phone) sms(b.phone, `Taxi Ardi: your driver has arrived (${d.plate}).`);
     bus.emit('change');
   }
   function startTrip(d) {
@@ -120,7 +120,7 @@
     s.stats.done++; s.stats.revenue += b.fare;
     const c = s.customers[b.phone];
     if (c) { c.trips.unshift({ id: b.id, at: s.simSec, pickup: b.pickup, dropoff: b.dropoff, fare: b.fare, vehicle: b.vehicle }); c.trips.length = Math.min(c.trips.length, 20); RO.save(); }
-    if (b.phone) sms(b.phone, `RideOps receipt ${b.id}: ${U.money(b.fare)} (${RO.PAY[b.payment]}). Thanks for riding!`);
+    if (b.phone) sms(b.phone, `Taxi Ardi receipt ${b.id}: ${U.money(b.fare)} (${RO.PAY[b.payment]}). Thanks for riding!`);
     bus.emit('completed', { driverId: d.id, bid: b.id }); bus.emit('change');
   }
   function retryPayment(id) { const b = bk(id); if (b && b.pay.state === 'failed') { b.pay = { state: 'processing', at: now() + 1500, noFail: true }; stamp(b, 'Payment retried by ops'); bus.emit('change'); } }
@@ -137,7 +137,7 @@
     b.declinedBy.push(d.id); b.driverId = null; b.status = 'pending'; b.pendingSince = now(); b.alerted = false; releaseDriver(d);
     stamp(b, `${d.name} cancelled: ${reason}`);
     raise('driver_cancel', 'high', `${d.name} (${d.id}) cancelled ${b.id}: ${reason}. ${S().settings.autoDispatch ? 'Re-dispatching automatically.' : 'Needs manual dispatch.'}`, { bookingId: b.id, driverId: d.id });
-    if (b.phone) sms(b.phone, `RideOps: your driver had to cancel. We're finding you another one.`);
+    if (b.phone) sms(b.phone, `Taxi Ardi: your driver had to cancel. We're finding you another one.`);
     bus.emit('change');
   }
   /* Manual override: ops force-assigns a driver, replacing whatever was in progress. */
@@ -153,7 +153,7 @@
     stamp(b, `Manually assigned to ${d.name} by ${by || 'ops'}`); log(`${b.id} manually assigned to ${d.id} by ${by || 'ops'}`, 'ops');
     S().alerts.forEach(a => { if (a.bookingId === bid && !a.resolved && a.type !== 'sos') a.resolved = true; });
     if (d.human) bus.emit('driver-msg', `Ops assigned you ${b.id}. Head to pickup.`);
-    if (b.phone) sms(b.phone, `RideOps: ${d.name} (${d.model}, ${d.plate}) is on the way.`);
+    if (b.phone) sms(b.phone, `Taxi Ardi: ${d.name} (${d.model}, ${d.plate}) is on the way.`);
     bus.emit('change'); return true;
   }
   function dispatchNow(id) { const b = bk(id); if (b && b.status === 'scheduled') { b.status = 'pending'; b.pendingSince = now(); stamp(b, 'Dispatched early by ops'); bus.emit('change'); } }

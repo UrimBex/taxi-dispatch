@@ -95,7 +95,7 @@
     pendingPhone = phone;
     U.setText(U.$('#lg-sentto'), U.fmtPhone(U.normPhone(phone))); U.$('#lg-otp').value = ''; U.setText(U.$('#lg-oerr'), '');
     U.$('#lg-f1').style.display = 'none'; U.$('#lg-f2').style.display = ''; U.$('#lg-otp').focus();
-    if (resp.devCode) U.$('#lg-toast').innerHTML = `<div class="sms-toast"><b>💬 Messages · RideOps (demo mode)</b><span>Your verification code is ${U.esc(resp.devCode)}.</span></div>`;
+    if (resp.devCode) U.$('#lg-toast').innerHTML = `<div class="sms-toast"><b>💬 Messages · Taxi Ardi (demo mode)</b><span>Your verification code is ${U.esc(resp.devCode)}.</span></div>`;
   });
   U.$('#lg-f2').addEventListener('submit', async e => {
     e.preventDefault();

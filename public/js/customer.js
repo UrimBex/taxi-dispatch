@@ -177,7 +177,7 @@
   bus.on('change', () => refresh(false));
   bus.on('sms', m => {
     if (m.to !== me.phone) return;
-    const n = document.createElement('div'); n.className = 'sms-toast'; n.innerHTML = `<b>💬 Messages · RideOps</b><span>${U.esc(m.text)}</span>`;
+    const n = document.createElement('div'); n.className = 'sms-toast'; n.innerHTML = `<b>💬 Messages · Taxi Ardi</b><span>${U.esc(m.text)}</span>`;
     U.$('#dev-customer').appendChild(n); setTimeout(() => n.remove(), 7000);
   });
   bus.on('devshow', id => { if (id === 'customer') { me.shown = ''; render(); } });

@@ -55,7 +55,7 @@ router.post('/request-code', async (req, res) => {
   // Mock SMS provider: logs it, and hands it back in the response for the
   // UI to display as if it had arrived — see NOTIFICATION_PROVIDER in
   // .env.example for wiring in a real one instead.
-  console.log(`[sms mock] to ${phone}: your RideOps verification code is ${code}`);
+  console.log(`[sms mock] to ${phone}: your Taxi Ardi verification code is ${code}`);
   res.json({ ok: true, devCode: MOCK_SMS ? code : undefined });
 });
 

@@ -16,7 +16,7 @@
 
   function menuText() {
     const c = cust(), lt = lastTrip();
-    let t = c ? `Welcome back, ${c.name.split(' ')[0]}. ` : 'Welcome to RideOps. We do not recognise this number. ';
+    let t = c ? `Welcome back, ${c.name.split(' ')[0]}. ` : 'Welcome to Taxi Ardi. We do not recognise this number. ';
     t += 'Press 1 for the status of your current booking. ';
     if (lt) t += `Press 2 to rebook your last trip from ${lt.pickup.label} to ${lt.dropoff.label}. `;
     t += 'Press 3 or 0 to speak to an operator. Press 9 to hear this menu again.';
@@ -97,7 +97,7 @@
     const c = call(); if (!c) return;
     if (iv.step === 'queued' && c.state === 'active') { iv.step = 'operator'; say('sys', `🎧 Connected to operator ${c.operator}.`); }
     if (iv.step !== 'idle' && c.bookingId && iv.bookedSeen !== c.bookingId) { iv.bookedSeen = c.bookingId; say('sys', `🎧 ${c.operator}: "Your taxi ${c.bookingId} is booked. You'll get an SMS shortly."`); }
-    if (c.state === 'ended' && iv.step !== 'ended') { iv.step = 'ended'; say('sys', c.abandoned ? 'Call dropped.' : 'The operator ended the call. Thank you for calling RideOps.'); }
+    if (c.state === 'ended' && iv.step !== 'ended') { iv.step = 'ended'; say('sys', c.abandoned ? 'Call dropped.' : 'The operator ended the call. Thank you for calling Taxi Ardi.'); }
     draw();
   }
   let lt = 0; bus.on('tick', () => { const t = performance.now(); if (t - lt > 500) { lt = t; sync(); } });
