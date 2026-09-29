@@ -145,11 +145,19 @@
     const o = U.$('#d-ovl', root); if (!o) return;
     U.setHTML(o, text ? `<div class="d-toast"><span>${text}</span>${actions || ''}</div>` : '');
   }
+  let rtcNote = '';
+  bus.on('rtc-error', msg => { rtcNote = ` · ⚠️ ${msg}`; voipView(); });
+  bus.on('rtc-state', s => { rtcNote = s === 'connected' ? ' · 🔊 audio live' : s === 'connecting' ? ' · connecting audio…' : ''; voipView(); });
+  // Not auto-hung-up just because st().voip is momentarily empty — there's a real gap between clicking
+  // call/answer (which starts getUserMedia + the peer connection right away) and the server's state push
+  // confirming it, and refresh() ticks up to 4x/second; tearing the connection down on that gap would kill
+  // every call before it started. The other side closing their end is what RTC.hangup() at 'vend'/pc failure
+  // already handles.
   function voipView() {
     const d = me(), v = st().voip; if (!d || !v || v.driverId !== d.id) return toast('');
-    if (v.state === 'ringing' && v.from === 'ops') toast('🎧 Incoming call from Ops Room', '<button class="btn sm primary" data-act="vans">Answer</button><button class="btn sm ghost" data-act="vend">Decline</button>');
-    else if (v.state === 'ringing') toast('📞 Calling Ops Room…', '<button class="btn sm ghost" data-act="vend">Cancel</button>');
-    else toast(`📞 Connected to Ops Room · ${U.mmss((Date.now() - v.t1) / 1000)}`, '<button class="btn sm danger" data-act="vend">Hang up</button>');
+    if (v.state === 'ringing' && v.from === 'ops') toast('🎧 Incoming call from Ops Room' + rtcNote, '<button class="btn sm primary" data-act="vans">Answer</button><button class="btn sm ghost" data-act="vend">Decline</button>');
+    else if (v.state === 'ringing') toast('📞 Calling Ops Room…' + rtcNote, '<button class="btn sm ghost" data-act="vend">Cancel</button>');
+    else toast(`📞 Connected to Ops Room · ${U.mmss((Date.now() - v.t1) / 1000)}${rtcNote}`, '<button class="btn sm danger" data-act="vend">Hang up</button>');
   }
 
   root.addEventListener('click', async e => {
@@ -165,9 +173,9 @@
     if (a === 'cancelclose') { dv.cancelOpen = false; refresh(); return; }
     if (a === 'sos') { if (confirm('Send an emergency SOS to the operations room?')) { await E.sos(); toast('🆘 SOS sent. Ops room has been alerted.'); } return; }
     if (a === 'callrider') return E.logEvent(`📞 Masked call: driver ${d.id} → rider`);
-    if (a === 'callops') return E.voipStart();
-    if (a === 'vans') return E.voipAnswer();
-    if (a === 'vend') return E.voipEnd();
+    if (a === 'callops') { rtcNote = ''; RO.RTC.startAsCaller(d.id); return E.voipStart(); }
+    if (a === 'vans') { rtcNote = ''; RO.RTC.startAsCallee(d.id); return E.voipAnswer(); }
+    if (a === 'vend') { RO.RTC.hangup(); return E.voipEnd(); }
   });
 
   // Right after login, RO.state is briefly still store.js's own local placeholder (regenerated fresh on every

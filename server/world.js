@@ -45,6 +45,9 @@ class World {
     this.smsListeners = new Set();
     this.msgListeners = new Set();
     this.completedListeners = new Set();
+    // WebRTC signaling relay for real driver<->ops audio (see ws.js) — the server never looks inside these
+    // messages (SDP/ICE payloads), it just forwards them to the right socket(s).
+    this.rtcListeners = new Set();
     this._flushScheduled = false;
 
     this.RO = loadSandboxRO();

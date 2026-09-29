@@ -173,12 +173,15 @@
     if (O.tab === 'bookings') U.setHTML(p, bookingsHTML()); else if (O.tab === 'alerts') U.setHTML(p, alertsHTML()); else if (O.tab === 'drivers') U.setHTML(p, driversHTML()); else if (O.tab === 'log') U.setHTML(p, logHTML());
     else if (O.tab === 'calls') { U.setHTML(U.$('#call-queue', root), queueHTML()); caller(); }
   }
+  let rtcNote = '';
+  bus.on('rtc-error', msg => { rtcNote = ` · ⚠️ ${msg}`; refresh(); });
+  bus.on('rtc-state', s => { rtcNote = s === 'connected' ? ' · 🔊 audio live' : s === 'connecting' ? ' · connecting audio…' : ''; refresh(); });
   function banner() {
     const sos = openAlerts().filter(a => a.type === 'sos'), el = U.$('#sos-banner', root);
     el.style.display = sos.length ? '' : 'none';
     U.setHTML(el, sos.map(a => `<div class="sos-row"><b>${U.esc(a.text)}</b><span><button class="btn sm" data-goto="${a.id}">Locate</button><button class="btn sm" data-sosdrv="${a.driverId}">📞 Call driver</button><button class="btn sm primary" data-ackid="${a.id}">Acknowledge</button></span></div>`).join(''));
     const v = st().voip, m = U.$('#voip-modal', root); m.style.display = v ? '' : 'none';
-    if (v) { const d = E.drv(v.driverId); if (d) U.setHTML(m, `<div class="voip"><div class="av">${U.initials(d.name)}</div><div><b>${v.state === 'ringing' ? (v.from === 'driver' ? '📞 Incoming: ' : '📞 Calling ') : '🎧 Connected: '}${d.id} ${U.esc(d.name)}</b><small>${v.state === 'active' ? 'VoIP headset · ' + U.mmss((Date.now() - v.t1) / 1000) : v.from === 'driver' ? 'Driver is calling the ops room' : 'Ringing…'}</small></div>${v.state === 'ringing' && v.from === 'driver' ? '<button class="btn sm primary" data-act="voipans">Answer</button>' : ''}<button class="btn sm danger" data-act="voipend">${v.state === 'active' ? 'Hang up' : 'Cancel'}</button></div>`); }
+    if (v) { const d = E.drv(v.driverId); if (d) U.setHTML(m, `<div class="voip"><div class="av">${U.initials(d.name)}</div><div><b>${v.state === 'ringing' ? (v.from === 'driver' ? '📞 Incoming: ' : '📞 Calling ') : '🎧 Connected: '}${d.id} ${U.esc(d.name)}</b><small>${(v.state === 'active' ? 'VoIP headset · ' + U.mmss((Date.now() - v.t1) / 1000) : v.from === 'driver' ? 'Driver is calling the ops room' : 'Ringing…') + rtcNote}</small></div>${v.state === 'ringing' && v.from === 'driver' ? '<button class="btn sm primary" data-act="voipans">Answer</button>' : ''}<button class="btn sm danger" data-act="voipend">${v.state === 'active' ? 'Hang up' : 'Cancel'}</button></div>`); }
   }
   function refresh() {
     if (!root.offsetParent) return; // ops room is not the active workspace
@@ -205,7 +208,7 @@
     if (d.goto) { const a = st().alerts.find(x => x.id === d.goto); if (a) select(a.bookingId ? 'booking' : 'driver', a.bookingId || a.driverId); return; }
     if (d.ackid) return E.ackAlert(d.ackid);
     if (d.retry) return E.retryPayment(d.retry);
-    if (d.sosdrv) return E.voipStart(d.sosdrv);
+    if (d.sosdrv) { rtcNote = ''; RO.RTC.startAsCaller(d.sosdrv); return E.voipStart(d.sosdrv); }
     if (d.answer) { const c = await E.answerCall(d.answer); if (!c) return; F.callId = c.id; F.phone = c.phone; F.name = c.name || ''; prefill(c.request); O.tab = 'calls'; renderPane(); refresh(); return; }
     if (d.endcall) { await E.endCall(d.endcall); if (F.callId === d.endcall) F.callId = null; return; }
     if (d.ftag) { const i = F.tags.indexOf(d.ftag); i < 0 ? F.tags.push(d.ftag) : F.tags.splice(i, 1); if (d.ftag === 'wheelchair') { F.vehicle = i < 0 ? 'access' : 'standard'; U.$('#f-veh', root).value = F.vehicle; } t.classList.toggle('on'); return; }
@@ -215,8 +218,9 @@
       case 'assign': { const id = U.$('#dt-drv', root).value; if (b) await E.assign(b.id, id); return; }
       case 'cancel': if (b) await E.cancelBooking(b.id); return;
       case 'dispatch': if (b) await E.dispatchNow(b.id); return;
-      case 'calldrv': return E.voipStart((b && b.driverId) || (dr && dr.id));
-      case 'voipend': return E.voipEnd(); case 'voipans': return E.voipAnswer();
+      case 'calldrv': { const did = (b && b.driverId) || (dr && dr.id); rtcNote = ''; RO.RTC.startAsCaller(did); return E.voipStart(did); }
+      case 'voipend': RO.RTC.hangup(); return E.voipEnd();
+      case 'voipans': { const v = st().voip; rtcNote = ''; if (v) RO.RTC.startAsCallee(v.driverId); return E.voipAnswer(); }
       case 'jam': return E.addJam();
       case 'pickpu': O.pick = O.pick === 'pu' ? null : 'pu'; return refresh(); case 'pickdr': O.pick = O.pick === 'dr' ? null : 'dr'; return refresh();
       case 'clear': clearForm(false); return fillForm();

@@ -171,16 +171,32 @@ function attach(server, { onUpgradeAuth }) {
       const b = world.E.bk(m.bid);
       safeSend({ type: 'completed', driverId: m.driverId, bid: m.bid, fare: b ? b.fare : null, payment: b ? b.payment : null });
     };
+    // WebRTC signaling relay: ops sees every driver's signals (any ops user might be the one who answers),
+    // a driver only ever sees signals addressed to their own vehicle. Never echoed back to whoever sent it.
+    const onRtc = m => {
+      if (m.fromUserId === user.id) return;
+      if (user.role === 'DRIVER') { if (!ctx.driver || m.driverId !== ctx.driver.id) return; }
+      else if (user.role !== 'OPS') return;
+      safeSend({ type: 'rtc', driverId: m.driverId, kind: m.kind, payload: m.payload, from: m.from });
+    };
     function safeSend(obj) { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj)); }
 
     world.listeners.add(sendSnapshot);
     world.smsListeners.add(onSms);
     world.msgListeners.add(onMsg);
     world.completedListeners.add(onCompleted);
+    world.rtcListeners.add(onRtc);
     sendSnapshot();
 
     ws.on('message', raw => {
       let msg; try { msg = JSON.parse(raw); } catch (e) { return; }
+      if (msg.type === 'rtc') {
+        if (user.role !== 'DRIVER' && user.role !== 'OPS') return;
+        const driverId = user.role === 'DRIVER' ? (ctx.driver && ctx.driver.id) : msg.driverId;
+        if (!driverId || !msg.kind) return;
+        world.rtcListeners.forEach(fn => fn({ driverId, kind: msg.kind, payload: msg.payload, from: user.role.toLowerCase(), fromUserId: user.id }));
+        return;
+      }
       if (msg.type !== 'action') return;
       const fn = actions[msg.name];
       if (!fn) { safeSend({ type: 'result', id: msg.id, ok: false, value: null, error: 'Not allowed for this role.' }); return; }
@@ -195,7 +211,7 @@ function attach(server, { onUpgradeAuth }) {
         });
     });
 
-    ws.on('close', () => { world.listeners.delete(sendSnapshot); world.smsListeners.delete(onSms); world.msgListeners.delete(onMsg); world.completedListeners.delete(onCompleted); });
+    ws.on('close', () => { world.listeners.delete(sendSnapshot); world.smsListeners.delete(onSms); world.msgListeners.delete(onMsg); world.completedListeners.delete(onCompleted); world.rtcListeners.delete(onRtc); });
     ws.on('error', () => {});
   });
 
