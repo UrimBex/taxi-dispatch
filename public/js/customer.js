@@ -39,7 +39,8 @@
     const showTrack = me.tab === 'book' && !!booking();
     root.innerHTML = `<div class="c-top"><div><small>Hello,</small><b>${U.esc(cust().name)}</b></div><button class="ghost" data-act="logout" title="Sign out">⎋</button></div>` +
       `<div class="c-body">${me.tab === 'book' ? (showTrack ? trackShell() : bookShell()) : me.tab === 'trips' ? tripsHTML() : placesHTML()}</div>` +
-      `<nav class="c-nav">${[['book', '🚕', 'Ride'], ['trips', '🕒', 'Trips'], ['places', '⭐', 'Places']].map(([k, i, l]) => `<button class="${me.tab === k ? 'on' : ''}" data-tab="${k}"><span>${i}</span>${l}</button>`).join('')}</nav>`;
+      `<nav class="c-nav">${[['book', '🚕', 'Ride'], ['trips', '🕒', 'Trips'], ['places', '⭐', 'Places']].map(([k, i, l]) => `<button class="${me.tab === k ? 'on' : ''}" data-tab="${k}"><span>${i}</span>${l}</button>`).join('')}</nav>` +
+      `<div id="c-ovl"></div>`;
     me.shown = me.tab === 'book' ? (showTrack ? 'track' : 'book') : me.tab;
     if (me.shown === 'book') syncSelects();
     if (me.shown === 'book' || me.shown === 'track') me.map = new MV(U.$('#c-map', root), { labels: false, zoom: false, slot: 'cust', onTap: me.shown === 'book' ? onTap : null });
@@ -98,7 +99,9 @@
       if (name && p) { await E.saveFavorites(cust().favorites.concat([{ name, x: p.x, y: p.y }])); render(); }
       return;
     }
-    if (d.act === 'callDriver') E.logEvent(`📞 Masked call: rider ${U.fmtPhone(me.phone)} → driver (${me.bid})`);
+    if (d.act === 'callDriver') { const b = booking(); if (!b || !b.driverId) return; rtcNote = ''; RO.RTC.startAsCaller(b.driverId, 'client'); return E.voipStart(); }
+    if (d.act === 'vans') { const v = st().voip; rtcNote = ''; if (v) RO.RTC.startAsCallee(v.driverId); return E.voipAnswer(); }
+    if (d.act === 'vend') { RO.RTC.hangup(); return E.voipEnd(); }
   });
   root.addEventListener('change', e => {
     const t = e.target;
@@ -128,8 +131,26 @@
     }
     return '';
   }
+  let rtcNote = '';
+  bus.on('rtc-error', msg => { rtcNote = ` · ⚠️ ${msg}`; voipView(); });
+  bus.on('rtc-state', s => { rtcNote = s === 'connected' ? ' · 🔊 audio live' : s === 'connecting' ? ' · connecting audio…' : ''; voipView(); });
+  function toast(text, actions) {
+    const o = U.$('#c-ovl', root); if (!o) return;
+    U.setHTML(o, text ? `<div class="d-toast"><span>${text}</span>${actions || ''}</div>` : '');
+  }
+  // Real driver<->rider voice (see public/js/rtc.js) — piggybacks on the same ringing/active state machine as
+  // driver<->ops, distinguished by peer:'client'. Only reacts to a call for the driver on THIS rider's own
+  // current trip — st().voip is one shared slot company-wide, and other riders'/ops's calls aren't this rider's.
+  function voipView() {
+    const b = booking(), v = st().voip; if (!b || !v || v.peer !== 'client' || v.driverId !== b.driverId) return toast('');
+    const d = E.drv(v.driverId), name = d ? U.esc(d.name) : 'your driver';
+    if (v.state === 'ringing' && v.from === 'driver') toast(`📞 Incoming call from ${name}` + rtcNote, '<button class="btn sm primary" data-act="vans">Answer</button><button class="btn sm ghost" data-act="vend">Decline</button>');
+    else if (v.state === 'ringing') toast(`📞 Calling ${name}…` + rtcNote, '<button class="btn sm ghost" data-act="vend">Cancel</button>');
+    else toast(`📞 Connected to ${name} · ${U.mmss((Date.now() - v.t1) / 1000)}${rtcNote}`, '<button class="btn sm danger" data-act="vend">Hang up</button>');
+  }
   function refresh(force) {
     if (!me.phone || !root.offsetParent) return;
+    voipView();
     if (me.shown === 'book' && booking()) return render();
     if (me.shown === 'book') {
       const pu = resolve(me.pu), dr = resolve(me.dr);

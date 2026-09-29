@@ -171,9 +171,12 @@
   function queueCall(c, why) { c.state = 'queued'; c.tq = now(); c.why = why; log(`☎️ ${U.fmtPhone(c.phone)} waiting for an operator (${why})`, 'ops'); bus.emit('change'); }
   function answerCall(id, op) { const c = S().calls.find(x => x.id === id); if (c && c.state === 'queued') { c.state = 'active'; c.operator = op || 'Dana'; c.tAns = now(); bus.emit('change'); } return c; }
   function endCall(id) { const c = S().calls.find(x => x.id === id); if (c && c.state !== 'ended') { c.state = 'ended'; c.tEnd = now(); bus.emit('change'); } }
-  function voipStart(did, from) {
+  // peer identifies who the driver's other party is regardless of who initiated ('ops' or 'client'/rider) —
+  // from alone can't tell you that (a driver calling out could be calling either one). Defaults to 'ops' so
+  // existing driver<->ops call sites don't need to change.
+  function voipStart(did, from, peer) {
     const d = drv(did); if (!d) return;
-    S().voip = { driverId: did, from: from || 'ops', t0: now(), state: 'ringing', answerAt: (from === 'driver' || d.human) ? 0 : now() + 1500 };
+    S().voip = { driverId: did, from: from || 'ops', peer: peer || 'ops', t0: now(), state: 'ringing', answerAt: (from === 'driver' || d.human) ? 0 : now() + 1500 };
     bus.emit('voip');
   }
   function voipAnswer() { const v = S().voip; if (v && v.state === 'ringing') { v.state = 'active'; v.t1 = now(); bus.emit('voip'); } }

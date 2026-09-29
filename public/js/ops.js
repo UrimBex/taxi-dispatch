@@ -180,7 +180,9 @@
     const sos = openAlerts().filter(a => a.type === 'sos'), el = U.$('#sos-banner', root);
     el.style.display = sos.length ? '' : 'none';
     U.setHTML(el, sos.map(a => `<div class="sos-row"><b>${U.esc(a.text)}</b><span><button class="btn sm" data-goto="${a.id}">Locate</button><button class="btn sm" data-sosdrv="${a.driverId}">📞 Call driver</button><button class="btn sm primary" data-ackid="${a.id}">Acknowledge</button></span></div>`).join(''));
-    const v = st().voip, m = U.$('#voip-modal', root); m.style.display = v ? '' : 'none';
+    // A call between a driver and their rider (peer:'client') is none of ops's business — don't show or react
+    // to it here, that's driver.js's/customer.js's own toast to handle.
+    const vAll = st().voip, v = vAll && (vAll.peer || 'ops') === 'ops' ? vAll : null, m = U.$('#voip-modal', root); m.style.display = v ? '' : 'none';
     if (v) { const d = E.drv(v.driverId); if (d) U.setHTML(m, `<div class="voip"><div class="av">${U.initials(d.name)}</div><div><b>${v.state === 'ringing' ? (v.from === 'driver' ? '📞 Incoming: ' : '📞 Calling ') : '🎧 Connected: '}${d.id} ${U.esc(d.name)}</b><small>${(v.state === 'active' ? 'VoIP headset · ' + U.mmss((Date.now() - v.t1) / 1000) : v.from === 'driver' ? 'Driver is calling the ops room' : 'Ringing…') + rtcNote}</small></div>${v.state === 'ringing' && v.from === 'driver' ? '<button class="btn sm primary" data-act="voipans">Answer</button>' : ''}<button class="btn sm danger" data-act="voipend">${v.state === 'active' ? 'Hang up' : 'Cancel'}</button></div>`); }
   }
   function refresh() {

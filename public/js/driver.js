@@ -156,9 +156,10 @@
   // already handles.
   function voipView() {
     const d = me(), v = st().voip; if (!d || !v || v.driverId !== d.id) return toast('');
-    if (v.state === 'ringing' && v.from === 'ops') toast('🎧 Incoming call from Ops Room' + rtcNote, '<button class="btn sm primary" data-act="vans">Answer</button><button class="btn sm ghost" data-act="vend">Decline</button>');
-    else if (v.state === 'ringing') toast('📞 Calling Ops Room…' + rtcNote, '<button class="btn sm ghost" data-act="vend">Cancel</button>');
-    else toast(`📞 Connected to Ops Room · ${U.mmss((Date.now() - v.t1) / 1000)}${rtcNote}`, '<button class="btn sm danger" data-act="vend">Hang up</button>');
+    const who = v.peer === 'client' ? 'Rider' : 'Ops Room';
+    if (v.state === 'ringing' && v.from !== 'driver') toast(`📞 Incoming call from ${who}` + rtcNote, '<button class="btn sm primary" data-act="vans">Answer</button><button class="btn sm ghost" data-act="vend">Decline</button>');
+    else if (v.state === 'ringing') toast(`📞 Calling ${who}…` + rtcNote, '<button class="btn sm ghost" data-act="vend">Cancel</button>');
+    else toast(`📞 Connected to ${who} · ${U.mmss((Date.now() - v.t1) / 1000)}${rtcNote}`, '<button class="btn sm danger" data-act="vend">Hang up</button>');
   }
 
   root.addEventListener('click', async e => {
@@ -173,9 +174,9 @@
     if (a === 'cancelopen') { dv.cancelOpen = true; refresh(); return; }
     if (a === 'cancelclose') { dv.cancelOpen = false; refresh(); return; }
     if (a === 'sos') { if (confirm('Send an emergency SOS to the operations room?')) { await E.sos(); toast('🆘 SOS sent. Ops room has been alerted.'); } return; }
-    if (a === 'callrider') return E.logEvent(`📞 Masked call: driver ${d.id} → rider`);
-    if (a === 'callops') { rtcNote = ''; RO.RTC.startAsCaller(d.id); return E.voipStart(); }
-    if (a === 'vans') { rtcNote = ''; RO.RTC.startAsCallee(d.id); return E.voipAnswer(); }
+    if (a === 'callrider') { rtcNote = ''; RO.RTC.startAsCaller(d.id, 'client'); return E.voipStartRider(); }
+    if (a === 'callops') { rtcNote = ''; RO.RTC.startAsCaller(d.id, 'ops'); return E.voipStart(); }
+    if (a === 'vans') { const v = st().voip; rtcNote = ''; RO.RTC.startAsCallee(d.id, v && v.peer); return E.voipAnswer(); }
     if (a === 'vend') { RO.RTC.hangup(); return E.voipEnd(); }
   });
 

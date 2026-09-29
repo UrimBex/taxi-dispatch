@@ -13,7 +13,7 @@
   // in this module needs to change.
   const ICE_SERVERS = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 
-  let pc = null, localStream = null, currentDriverId = null, audioEl = null, unlockArmed = false;
+  let pc = null, localStream = null, currentDriverId = null, currentPeer = 'ops', audioEl = null, unlockArmed = false;
   let pendingRemote = null, pendingIce = [];
   // A call can fail and reset itself (teardownConnection/hangup) faster than a human can type a debug command —
   // debug() alone then just shows "nothing happened", which looks identical to "never started". Keep a running
@@ -68,9 +68,9 @@
     }, { once: true });
   }
 
-  function newPeerConnection(driverId) {
+  function newPeerConnection(driverId, peer) {
     const p = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    p.onicecandidate = e => { if (e.candidate) { log('local ICE candidate ready, sending'); RO.live.sendRtc(driverId, 'ice', e.candidate.toJSON()); } else log('local ICE gathering complete'); };
+    p.onicecandidate = e => { if (e.candidate) { log('local ICE candidate ready, sending'); RO.live.sendRtc(driverId, 'ice', e.candidate.toJSON(), peer); } else log('local ICE gathering complete'); };
     p.ontrack = e => { log('ontrack: remote audio arrived'); ensureAudioEl().srcObject = e.streams[0] || new MediaStream([e.track]); tryPlay(); };
     p.oniceconnectionstatechange = () => log('iceConnectionState ->', p.iceConnectionState);
     p.onconnectionstatechange = () => {
@@ -107,35 +107,37 @@
     currentDriverId = null;
   }
 
-  async function startAsCaller(driverId) {
-    log('startAsCaller', driverId);
+  // peer only matters for a driver's own outgoing signals (ops vs rider — see server/ws.js); OPS and CLIENT
+  // callers can omit it, the server infers their peer from their role regardless of what's sent.
+  async function startAsCaller(driverId, peer) {
+    log('startAsCaller', driverId, peer || 'ops');
     teardownConnection();
-    currentDriverId = driverId;
+    currentDriverId = driverId; currentPeer = peer || 'ops';
     try {
       const stream = await getMic();
-      pc = newPeerConnection(driverId);
+      pc = newPeerConnection(driverId, currentPeer);
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       log('sending offer');
-      RO.live.sendRtc(driverId, 'offer', offer.toJSON ? offer.toJSON() : { type: offer.type, sdp: offer.sdp });
+      RO.live.sendRtc(driverId, 'offer', offer.toJSON ? offer.toJSON() : { type: offer.type, sdp: offer.sdp }, currentPeer);
     } catch (err) { log('FAILED:', err.name, err.message); bus.emit('rtc-error', err.message || String(err)); hangup(); }
   }
 
-  async function startAsCallee(driverId) {
-    log('startAsCallee', driverId, 'pendingRemote for this driver?', !!(pendingRemote && pendingRemote.driverId === driverId));
+  async function startAsCallee(driverId, peer) {
+    log('startAsCallee', driverId, peer || 'ops', 'pendingRemote for this driver?', !!(pendingRemote && pendingRemote.driverId === driverId));
     teardownConnection();
-    currentDriverId = driverId;
+    currentDriverId = driverId; currentPeer = peer || 'ops';
     try {
       const stream = await getMic();
-      pc = newPeerConnection(driverId);
+      pc = newPeerConnection(driverId, currentPeer);
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
       if (pendingRemote && pendingRemote.driverId === driverId) { await applyRemote(driverId, pendingRemote.sdp); pendingRemote = null; }
       else log('WARNING: no offer buffered for', driverId, '— creating an answer with nothing to answer');
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       log('sending answer');
-      RO.live.sendRtc(driverId, 'answer', answer.toJSON ? answer.toJSON() : { type: answer.type, sdp: answer.sdp });
+      RO.live.sendRtc(driverId, 'answer', answer.toJSON ? answer.toJSON() : { type: answer.type, sdp: answer.sdp }, currentPeer);
     } catch (err) { log('FAILED:', err.name, err.message); bus.emit('rtc-error', err.message || String(err)); hangup(); }
   }
 

@@ -25,6 +25,13 @@ const { prisma } = require('./lib/db');
 // name -> (ctx, args) => result. `ctx` carries the caller's resolved
 // identity (role, name, phone/driver/company) — never trust an id the
 // client sent for "which driver/booking is this" where ownership matters.
+
+// A rider's own driver isn't carried on their session (only `phone` is) — resolved from whichever of their
+// bookings is currently in progress, same idea as ctx.driver for a DRIVER session.
+function riderActiveBooking(ctx) {
+  return ctx.state.bookings.find(b => b.phone === ctx.phone && ['enroute', 'arrived', 'ontrip'].includes(b.status));
+}
+
 const CLIENT_ACTIONS = {
   createBooking: (ctx, a) => ctx.E.createBooking({ pickup: a.pickup, dropoff: a.dropoff, vehicle: a.vehicle, payment: a.payment, whenMin: a.whenMin, tags: a.tags, source: 'app', phone: ctx.phone, name: ctx.name }),
   cancelBooking: (ctx, a) => {
@@ -53,7 +60,13 @@ const CLIENT_ACTIONS = {
     await prisma.user.update({ where: { id: ctx.userId }, data: { favorites: JSON.stringify(list) } }).catch(() => {});
     const c = ctx.state.customers[ctx.phone]; if (c) c.favorites = list;
     ctx.emitChange();
-  }
+  },
+  // Real driver<->rider voice (see public/js/rtc.js) piggybacks on the same ringing/active state machine as
+  // driver<->ops — peer:'client' is what tells everyone's UI (and the answer/end guards below) which kind of
+  // call this is, since `from` alone only says who dialled, not who they dialled.
+  voipStart: ctx => { const b = riderActiveBooking(ctx); if (b && b.driverId) ctx.E.voipStart(b.driverId, 'client', 'client'); },
+  voipAnswer: ctx => { const v = ctx.state.voip, b = riderActiveBooking(ctx); if (v && v.peer === 'client' && b && v.driverId === b.driverId) ctx.E.voipAnswer(); },
+  voipEnd: ctx => { const v = ctx.state.voip, b = riderActiveBooking(ctx); if (v && v.peer === 'client' && b && v.driverId === b.driverId) ctx.E.voipEnd(); }
 };
 
 const DRIVER_ACTIONS = {
@@ -104,7 +117,10 @@ const DRIVER_ACTIONS = {
   completeTrip: ctx => ctx.driver && ctx.E.completeTrip(ctx.driver),
   driverCancel: (ctx, a) => ctx.driver && ctx.E.driverCancel(ctx.driver, a.reason || 'Cancelled'),
   sos: ctx => ctx.driver && ctx.E.sos(ctx.driver),
-  voipStart: ctx => ctx.driver && ctx.E.voipStart(ctx.driver.id, 'driver'),
+  voipStart: ctx => ctx.driver && ctx.E.voipStart(ctx.driver.id, 'driver', 'ops'),
+  // Calling the rider on the driver's current trip, rather than ops — same idea, different peer. No-ops (rather
+  // than erroring) if there's no rider phone to reach, e.g. no active job.
+  voipStartRider: ctx => { const d = ctx.driver; if (!d) return; const b = ctx.E.bk(d.bookingId); if (b && b.phone) ctx.E.voipStart(d.id, 'driver', 'client'); },
   voipAnswer: ctx => ctx.E.voipAnswer(),
   voipEnd: ctx => ctx.E.voipEnd(),
   logEvent: (ctx, a) => ctx.E.log(String(a.text || '').slice(0, 300), 'ops')
@@ -119,7 +135,7 @@ const OPS_ACTIONS = {
   ackAlert: (ctx, a) => ctx.E.ackAlert(a.id, a.resolve),
   answerCall: (ctx, a) => ctx.E.answerCall(a.id, ctx.name),
   endCall: (ctx, a) => ctx.E.endCall(a.id),
-  voipStart: (ctx, a) => ctx.E.voipStart(a.driverId, 'ops'),
+  voipStart: (ctx, a) => ctx.E.voipStart(a.driverId, 'ops', 'ops'),
   voipAnswer: ctx => ctx.E.voipAnswer(),
   voipEnd: ctx => ctx.E.voipEnd(),
   addJam: ctx => ctx.E.addJam(),
@@ -171,13 +187,18 @@ function attach(server, { onUpgradeAuth }) {
       const b = world.E.bk(m.bid);
       safeSend({ type: 'completed', driverId: m.driverId, bid: m.bid, fare: b ? b.fare : null, payment: b ? b.payment : null });
     };
-    // WebRTC signaling relay: ops sees every driver's signals (any ops user might be the one who answers),
-    // a driver only ever sees signals addressed to their own vehicle. Never echoed back to whoever sent it.
+    // WebRTC signaling relay, now carrying two independent channels per driver (peer: 'ops' or 'client') since a
+    // driver can be reached by either — ops sees every driver's ops-peer signals (any ops user might answer), a
+    // driver sees anything addressed to their own vehicle regardless of peer (they're only ever in one call at a
+    // time), a rider only sees client-peer signals for the driver on their own current trip. Never echoed back
+    // to whoever sent it.
     const onRtc = m => {
       if (m.fromUserId === user.id) return;
       if (user.role === 'DRIVER') { if (!ctx.driver || m.driverId !== ctx.driver.id) return; }
-      else if (user.role !== 'OPS') return;
-      safeSend({ type: 'rtc', driverId: m.driverId, kind: m.kind, payload: m.payload, from: m.from });
+      else if (user.role === 'OPS') { if (m.peer !== 'ops') return; }
+      else if (user.role === 'CLIENT') { if (m.peer !== 'client' || m.phone !== ctx.phone) return; }
+      else return;
+      safeSend({ type: 'rtc', driverId: m.driverId, kind: m.kind, payload: m.payload, from: m.from, peer: m.peer });
     };
     function safeSend(obj) { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj)); }
 
@@ -191,10 +212,21 @@ function attach(server, { onUpgradeAuth }) {
     ws.on('message', raw => {
       let msg; try { msg = JSON.parse(raw); } catch (e) { return; }
       if (msg.type === 'rtc') {
-        if (user.role !== 'DRIVER' && user.role !== 'OPS') return;
-        const driverId = user.role === 'DRIVER' ? (ctx.driver && ctx.driver.id) : msg.driverId;
-        if (!driverId || !msg.kind) return;
-        world.rtcListeners.forEach(fn => fn({ driverId, kind: msg.kind, payload: msg.payload, from: user.role.toLowerCase(), fromUserId: user.id }));
+        if (!msg.kind) return;
+        let driverId, phone, peer;
+        if (user.role === 'DRIVER') {
+          if (!ctx.driver) return;
+          driverId = ctx.driver.id;
+          peer = msg.peer === 'client' ? 'client' : 'ops';
+          if (peer === 'client') { const b = world.E.bk(ctx.driver.bookingId); if (!b || !b.phone) return; phone = b.phone; }
+        } else if (user.role === 'OPS') {
+          driverId = msg.driverId; peer = 'ops';
+          if (!driverId) return;
+        } else if (user.role === 'CLIENT') {
+          const b = riderActiveBooking(ctx); if (!b || !b.driverId) return;
+          driverId = b.driverId; phone = ctx.phone; peer = 'client';
+        } else return;
+        world.rtcListeners.forEach(fn => fn({ driverId, phone, kind: msg.kind, payload: msg.payload, from: user.role.toLowerCase(), peer, fromUserId: user.id }));
         return;
       }
       if (msg.type !== 'action') return;

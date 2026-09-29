@@ -43,8 +43,10 @@
     };
   }
   // One-way WebRTC signaling (SDP offer/answer, ICE candidates) — no response expected, so this bypasses the
-  // request/response rpc() plumbing above. See public/js/rtc.js for what sends/receives these.
-  function sendRtc(driverId, kind, payload) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'rtc', driverId, kind, payload })); }
+  // request/response rpc() plumbing above. See public/js/rtc.js for what sends/receives these. `peer` only
+  // matters for a driver sender (ops vs rider) — the server infers it for OPS/CLIENT senders regardless of
+  // what's passed, so other callers can just omit it.
+  function sendRtc(driverId, kind, payload, peer) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'rtc', driverId, kind, payload, peer })); }
   function disconnect() { if (ws) { ws.onclose = null; ws.close(); ws = null; } pending.forEach(p => p.reject(new Error('disconnected'))); pending.clear(); }
 
   function rpc(name, args) {
@@ -78,6 +80,7 @@
     endCall: id => rpc(RO.session && RO.session.role === 'ops' ? 'endCall' : 'ivrEndCall', { id }),
     answerCall: id => rpc('answerCall', { id }),
     voipStart: driverId => rpc('voipStart', { driverId }),
+    voipStartRider: () => rpc('voipStartRider', {}),
     voipAnswer: () => rpc('voipAnswer', {}),
     voipEnd: () => rpc('voipEnd', {}),
     addJam: () => rpc('addJam', {}),
