@@ -35,6 +35,7 @@
     say('sys', `Dialling 0800-TAXIARDI from ${U.fmtPhone(phone)}…`); setTimeout(() => { if (iv.step === 'menu') say('ivr', menuText()); }, 500);
   }
   async function hangup(msg) {
+    RO.RTC.hangup();
     if (iv.callId) await E.endCall(iv.callId);
     iv.step = 'ended'; say('sys', msg || 'Call ended.');
   }
@@ -56,6 +57,10 @@
       iv.step = 'confirm'; say('ivr', `Book a taxi from ${lt.pickup.label} to ${lt.dropoff.label}? Press 1 to confirm, or 2 to go back.`);
     } else if (k === '3' || k === '0') {
       iv.step = 'queued'; await E.queueCall(call(), cust() ? 'caller requested operator' : 'unknown caller'); say('ivr', 'Please hold while we connect you to the next available operator.');
+      // Real audio (see rtc.js) — sent as soon as we're queued, not once an operator actually answers: the
+      // offer just sits buffered on whichever ops browser receives it until someone clicks Answer, same as
+      // every other call in this app (the offer always arrives before the answer click, not after).
+      RO.RTC.startAsCaller(iv.callId, null, 'call');
     } else if (k === '9') say('ivr', menuText());
     else say('ivr', 'Sorry, that option is not available. ' + menuText());
   }
@@ -70,12 +75,15 @@
       <div class="ivr-log" id="ivr-log"></div><div class="keypad" id="ivr-keys">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map(k => `<button data-key="${k}">${k}</button>`).join('')}</div></div></div>`;
     iv.shown = 'idle'; U.$('#iv-sel', root).value = iv.sel;
   }
+  let rtcNote = '';
+  bus.on('rtc-error', msg => { rtcNote = ` · ⚠️ ${msg}`; draw(); });
+  bus.on('rtc-state', s => { rtcNote = s === 'connected' ? ' · 🔊 audio live' : s === 'connecting' ? ' · connecting audio…' : ''; draw(); });
   function draw(force) {
     if (!root.offsetParent) return;
     const inCall = iv.step !== 'idle';
     U.$('#ivr-idle', root).style.display = inCall ? 'none' : ''; U.$('#ivr-call', root).style.display = inCall ? '' : 'none';
     if (!inCall) return;
-    const sub = { menu: 'Automated menu', confirm: 'Automated menu', queued: '⏳ On hold — waiting for an operator', operator: '🎧 Speaking with operator', ended: 'Call ended' }[iv.step];
+    const sub = { menu: 'Automated menu', confirm: 'Automated menu', queued: '⏳ On hold — waiting for an operator', operator: '🎧 Speaking with operator' + rtcNote, ended: 'Call ended' }[iv.step];
     U.setText(U.$('#iv-title', root), `${U.fmtPhone(iv.phone)} · ${U.mmss((Date.now() - iv.t0) / 1000)}`); U.setText(U.$('#iv-sub', root), sub);
     U.setHTML(U.$('#ivr-log', root), iv.lines.map(l => `<div class="ln ${l.who}">${U.esc(l.text)}</div>`).join(''));
     const lg = U.$('#ivr-log', root); if (force) lg.scrollTop = lg.scrollHeight;
@@ -97,7 +105,7 @@
     const c = call(); if (!c) return;
     if (iv.step === 'queued' && c.state === 'active') { iv.step = 'operator'; say('sys', `🎧 Connected to operator ${c.operator}.`); }
     if (iv.step !== 'idle' && c.bookingId && iv.bookedSeen !== c.bookingId) { iv.bookedSeen = c.bookingId; say('sys', `🎧 ${c.operator}: "Your taxi ${c.bookingId} is booked. You'll get an SMS shortly."`); }
-    if (c.state === 'ended' && iv.step !== 'ended') { iv.step = 'ended'; say('sys', c.abandoned ? 'Call dropped.' : 'The operator ended the call. Thank you for calling Taxi Ardi.'); }
+    if (c.state === 'ended' && iv.step !== 'ended') { RO.RTC.hangup(); iv.step = 'ended'; say('sys', c.abandoned ? 'Call dropped.' : 'The operator ended the call. Thank you for calling Taxi Ardi.'); }
     draw();
   }
   let lt = 0; bus.on('tick', () => { const t = performance.now(); if (t - lt > 500) { lt = t; sync(); } });

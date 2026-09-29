@@ -1,10 +1,15 @@
-/* Real driver<->ops voice over WebRTC — browser to browser, no telephony provider involved. Signaling (SDP
-   offer/answer, ICE candidates) is relayed through the existing WebSocket (server/ws.js's rtc relay); once a
-   peer connection is up, audio flows directly between the two browsers (or via a TURN relay if a direct path
-   isn't reachable — see ICE_SERVERS below).
-   Piggybacks on the existing simulated voip call state (engine.js's voipStart/voipAnswer/voipEnd) for "who's
-   calling whom" — this module only adds the actual audio on top of the same call/answer/hang-up actions
-   driver.js and ops.js already trigger. Loaded after net.js (needs RO.live.sendRtc) and before driver.js/ops.js. */
+/* Real voice over WebRTC — browser to browser, no telephony provider involved. Signaling (SDP offer/answer,
+   ICE candidates) is relayed through the existing WebSocket (server/ws.js's rtc relay); once a peer connection
+   is up, audio flows directly between the two browsers (or via a TURN relay if a direct path isn't reachable —
+   see ICE_SERVERS below).
+   Two addressing channels, both piggybacking on an existing ringing/active call state machine for "who's
+   calling whom" rather than reinventing one:
+    - 'driver' (default): driver<->ops or driver<->rider, id is a driverId — engine.js's voipStart/voipAnswer/
+      voipEnd, disambiguated by peer ('ops'/'client').
+    - 'call': rider<->operator via the IVR queue, id is the call's own id — engine.js's queueCall/answerCall/
+      endCall.
+   This module only adds the actual audio on top of whichever of those actions driver.js/ops.js/customer.js/
+   ivr.js already trigger. Loaded after net.js (needs RO.live.sendRtc) and before those. */
 (function (RO) {
   'use strict';
   const bus = RO.bus;
@@ -13,7 +18,7 @@
   // in this module needs to change.
   const ICE_SERVERS = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 
-  let pc = null, localStream = null, currentDriverId = null, currentPeer = 'ops', audioEl = null, unlockArmed = false;
+  let pc = null, localStream = null, currentId = null, currentChannel = 'driver', currentPeer = 'ops', audioEl = null, unlockArmed = false;
   let pendingRemote = null, pendingIce = [];
   // A call can fail and reset itself (teardownConnection/hangup) faster than a human can type a debug command —
   // debug() alone then just shows "nothing happened", which looks identical to "never started". Keep a running
@@ -27,9 +32,9 @@
     if (debugBox) return debugBox;
     debugBox = document.createElement('div');
     debugBox.id = 'rtc-debug';
-    // Top-left, not bottom — the driver's call toast sits at the bottom of the screen (.d-toast) and the ops
-    // incoming-call banner sits top-RIGHT (#voip-modal); this was visually covering the driver's Hang Up button
-    // even with pointer-events:none, since that only stops clicks, not hiding what's underneath from view.
+    // Top-left, not bottom — a call toast sits at the bottom of the screen (.d-toast) and the ops incoming-call
+    // banner sits top-RIGHT (#voip-modal); this was visually covering a driver's Hang Up button even with
+    // pointer-events:none, since that only stops clicks, not hiding what's underneath from view.
     debugBox.style.cssText = 'position:fixed;left:8px;top:8px;max-width:70vw;max-height:26vh;overflow:auto;background:#000c;color:#0f0;font:10px/1.4 ui-monospace,Consolas,monospace;padding:6px 8px;border-radius:6px;z-index:99999;white-space:pre-wrap;pointer-events:none';
     document.body.appendChild(debugBox);
     return debugBox;
@@ -68,9 +73,9 @@
     }, { once: true });
   }
 
-  function newPeerConnection(driverId, peer) {
+  function newPeerConnection(id, channel, peer) {
     const p = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    p.onicecandidate = e => { if (e.candidate) { log('local ICE candidate ready, sending'); RO.live.sendRtc(driverId, 'ice', e.candidate.toJSON(), peer); } else log('local ICE gathering complete'); };
+    p.onicecandidate = e => { if (e.candidate) { log('local ICE candidate ready, sending'); RO.live.sendRtc(id, 'ice', e.candidate.toJSON(), peer, channel); } else log('local ICE gathering complete'); };
     p.ontrack = e => { log('ontrack: remote audio arrived'); ensureAudioEl().srcObject = e.streams[0] || new MediaStream([e.track]); tryPlay(); };
     p.oniceconnectionstatechange = () => log('iceConnectionState ->', p.iceConnectionState);
     p.onconnectionstatechange = () => {
@@ -87,8 +92,8 @@
     return localStream;
   }
 
-  async function applyRemote(driverId, sdp) {
-    if (!pc || currentDriverId !== driverId) { log('buffering remote', sdp.type, '(no active call yet for', driverId, ')'); pendingRemote = { driverId, sdp }; return; }
+  async function applyRemote(id, sdp) {
+    if (!pc || currentId !== id) { log('buffering remote', sdp.type, '(no active call yet for', id, ')'); pendingRemote = { id, sdp }; return; }
     log('applying remote', sdp.type);
     await pc.setRemoteDescription(sdp);
     const queued = pendingIce.splice(0);
@@ -104,40 +109,43 @@
     if (pc) { try { pc.close(); } catch (e) { } pc = null; }
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     if (audioEl) audioEl.srcObject = null;
-    currentDriverId = null;
+    currentId = null;
   }
 
-  // peer only matters for a driver's own outgoing signals (ops vs rider — see server/ws.js); OPS and CLIENT
-  // callers can omit it, the server infers their peer from their role regardless of what's sent.
-  async function startAsCaller(driverId, peer) {
-    log('startAsCaller', driverId, peer || 'ops');
+  // channel: 'driver' (default) or 'call' — see file header. peer only matters for a driver's own outgoing
+  // signals (ops vs rider); OPS and CLIENT callers can omit it, the server infers their peer from their role
+  // regardless of what's sent.
+  async function startAsCaller(id, peer, channel) {
+    channel = channel || 'driver';
+    log('startAsCaller', channel, id, peer || 'ops');
     teardownConnection();
-    currentDriverId = driverId; currentPeer = peer || 'ops';
+    currentId = id; currentChannel = channel; currentPeer = peer || 'ops';
     try {
       const stream = await getMic();
-      pc = newPeerConnection(driverId, currentPeer);
+      pc = newPeerConnection(id, channel, currentPeer);
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       log('sending offer');
-      RO.live.sendRtc(driverId, 'offer', offer.toJSON ? offer.toJSON() : { type: offer.type, sdp: offer.sdp }, currentPeer);
+      RO.live.sendRtc(id, 'offer', offer.toJSON ? offer.toJSON() : { type: offer.type, sdp: offer.sdp }, currentPeer, channel);
     } catch (err) { log('FAILED:', err.name, err.message); bus.emit('rtc-error', err.message || String(err)); hangup(); }
   }
 
-  async function startAsCallee(driverId, peer) {
-    log('startAsCallee', driverId, peer || 'ops', 'pendingRemote for this driver?', !!(pendingRemote && pendingRemote.driverId === driverId));
+  async function startAsCallee(id, peer, channel) {
+    channel = channel || 'driver';
+    log('startAsCallee', channel, id, peer || 'ops', 'pendingRemote for this id?', !!(pendingRemote && pendingRemote.id === id));
     teardownConnection();
-    currentDriverId = driverId; currentPeer = peer || 'ops';
+    currentId = id; currentChannel = channel; currentPeer = peer || 'ops';
     try {
       const stream = await getMic();
-      pc = newPeerConnection(driverId, currentPeer);
+      pc = newPeerConnection(id, channel, currentPeer);
       stream.getTracks().forEach(t => pc.addTrack(t, stream));
-      if (pendingRemote && pendingRemote.driverId === driverId) { await applyRemote(driverId, pendingRemote.sdp); pendingRemote = null; }
-      else log('WARNING: no offer buffered for', driverId, '— creating an answer with nothing to answer');
+      if (pendingRemote && pendingRemote.id === id) { await applyRemote(id, pendingRemote.sdp); pendingRemote = null; }
+      else log('WARNING: no offer buffered for', id, '— creating an answer with nothing to answer');
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       log('sending answer');
-      RO.live.sendRtc(driverId, 'answer', answer.toJSON ? answer.toJSON() : { type: answer.type, sdp: answer.sdp }, currentPeer);
+      RO.live.sendRtc(id, 'answer', answer.toJSON ? answer.toJSON() : { type: answer.type, sdp: answer.sdp }, currentPeer, channel);
     } catch (err) { log('FAILED:', err.name, err.message); bus.emit('rtc-error', err.message || String(err)); hangup(); }
   }
 
@@ -148,10 +156,10 @@
   }
 
   bus.on('rtc', async msg => {
-    log('received', msg.kind, 'from', msg.from, 'for', msg.driverId);
-    if (msg.kind === 'offer' || msg.kind === 'answer') applyRemote(msg.driverId, msg.payload).catch(err => { log('setRemoteDescription FAILED:', err.message); bus.emit('rtc-error', err.message || String(err)); });
+    log('received', msg.channel, msg.kind, 'from', msg.from, 'for', msg.id);
+    if (msg.kind === 'offer' || msg.kind === 'answer') applyRemote(msg.id, msg.payload).catch(err => { log('setRemoteDescription FAILED:', err.message); bus.emit('rtc-error', err.message || String(err)); });
     else if (msg.kind === 'ice') {
-      if (pc && currentDriverId === msg.driverId && pc.remoteDescription) pc.addIceCandidate(msg.payload).catch(err => log('addIceCandidate failed:', err.message));
+      if (pc && currentId === msg.id && pc.remoteDescription) pc.addIceCandidate(msg.payload).catch(err => log('addIceCandidate failed:', err.message));
       else { log('queueing ICE candidate (no matching active call yet)'); pendingIce.push(msg.payload); }
     }
   });
@@ -160,9 +168,9 @@
   // happening (which side stalled: no local media, no remote description, no ICE candidates, etc.) instead of
   // waiting for something to throw.
   function debug() {
-    if (!pc) return { active: false, currentDriverId, pendingRemote: !!pendingRemote, pendingIceCount: pendingIce.length };
+    if (!pc) return { active: false, currentId, currentChannel, pendingRemote: !!pendingRemote, pendingIceCount: pendingIce.length };
     return {
-      active: true, currentDriverId,
+      active: true, currentId, currentChannel,
       connectionState: pc.connectionState, iceConnectionState: pc.iceConnectionState, signalingState: pc.signalingState,
       hasLocalDescription: !!pc.localDescription, hasRemoteDescription: !!pc.remoteDescription,
       localTracks: localStream ? localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled, muted: t.muted, readyState: t.readyState })) : [],

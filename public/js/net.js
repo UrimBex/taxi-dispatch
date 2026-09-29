@@ -38,15 +38,16 @@
       else if (msg.type === 'sms') bus.emit('sms', { to: msg.to, text: msg.text });
       else if (msg.type === 'driver-msg') bus.emit('driver-msg', msg.text);
       else if (msg.type === 'completed') bus.emit('completed', { driverId: msg.driverId, bid: msg.bid, fare: msg.fare, payment: msg.payment });
-      else if (msg.type === 'rtc') bus.emit('rtc', { driverId: msg.driverId, kind: msg.kind, payload: msg.payload, from: msg.from });
+      else if (msg.type === 'rtc') bus.emit('rtc', { channel: msg.channel, id: msg.id, kind: msg.kind, payload: msg.payload, from: msg.from, peer: msg.peer });
       else if (msg.type === 'result') { const p = pending.get(msg.id); if (p) { pending.delete(msg.id); msg.ok ? p.resolve(msg.value) : p.reject(new Error(msg.error || 'Action failed')); } }
     };
   }
   // One-way WebRTC signaling (SDP offer/answer, ICE candidates) — no response expected, so this bypasses the
-  // request/response rpc() plumbing above. See public/js/rtc.js for what sends/receives these. `peer` only
-  // matters for a driver sender (ops vs rider) — the server infers it for OPS/CLIENT senders regardless of
-  // what's passed, so other callers can just omit it.
-  function sendRtc(driverId, kind, payload, peer) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'rtc', driverId, kind, payload, peer })); }
+  // request/response rpc() plumbing above. See public/js/rtc.js for what sends/receives these. `channel` is
+  // 'driver' (id is a driverId; default, existing driver<->ops/rider calls) or 'call' (id is an IVR call id, for
+  // rider<->operator). `peer` only matters for a driver sender (ops vs rider) — the server infers it for OPS/
+  // CLIENT senders regardless of what's passed, so other callers can just omit it.
+  function sendRtc(id, kind, payload, peer, channel) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'rtc', channel: channel || 'driver', id, kind, payload, peer })); }
   function disconnect() { if (ws) { ws.onclose = null; ws.close(); ws = null; } pending.forEach(p => p.reject(new Error('disconnected'))); pending.clear(); }
 
   function rpc(name, args) {

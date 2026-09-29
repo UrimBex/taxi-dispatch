@@ -93,7 +93,7 @@
   }
   function caller() {
     const c = F.callId && st().calls.find(x => x.id === F.callId), cu = st().customers[U.normPhone(F.phone)], el = U.$('#op-caller', root); if (!el) return;
-    let h = ''; if (c) h += `<div class="pop">☎️ <b>${U.esc(U.fmtPhone(c.phone))}</b> · connected ${U.mmss((Date.now() - c.tAns) / 1000)}${c.notes ? `<br>📝 ${U.esc(c.notes)}` : ''}${c.bookingId ? `<br>✅ Booked ${c.bookingId}` : ''}</div>`;
+    let h = ''; if (c) h += `<div class="pop">☎️ <b>${U.esc(U.fmtPhone(c.phone))}</b> · connected ${U.mmss((Date.now() - c.tAns) / 1000)}${rtcNote}${c.notes ? `<br>📝 ${U.esc(c.notes)}` : ''}${c.bookingId ? `<br>✅ Booked ${c.bookingId}` : ''}</div>`;
     if (cu) { const lt = cu.trips[0]; h += `<div class="pop">👤 <b>${U.esc(cu.name)}</b> — repeat caller · ${cu.trips.length} trips${lt ? `<br>Last: ${U.esc(lt.pickup.label)} → ${U.esc(lt.dropoff.label)} <button class="btn sm" data-act="uselast">Use</button>` : ''}</div>`; }
     U.setHTML(el, h);
     U.setText(U.$('#op-ctx', root), c ? `Operator dashboard · on call with ${U.fmtPhone(c.phone)}` : 'Operator dashboard · new booking');
@@ -211,8 +211,8 @@
     if (d.ackid) return E.ackAlert(d.ackid);
     if (d.retry) return E.retryPayment(d.retry);
     if (d.sosdrv) { rtcNote = ''; RO.RTC.startAsCaller(d.sosdrv); return E.voipStart(d.sosdrv); }
-    if (d.answer) { const c = await E.answerCall(d.answer); if (!c) return; F.callId = c.id; F.phone = c.phone; F.name = c.name || ''; prefill(c.request); O.tab = 'calls'; renderPane(); refresh(); return; }
-    if (d.endcall) { await E.endCall(d.endcall); if (F.callId === d.endcall) F.callId = null; return; }
+    if (d.answer) { const c = await E.answerCall(d.answer); if (!c) return; rtcNote = ''; RO.RTC.startAsCallee(c.id, null, 'call'); F.callId = c.id; F.phone = c.phone; F.name = c.name || ''; prefill(c.request); O.tab = 'calls'; renderPane(); refresh(); return; }
+    if (d.endcall) { RO.RTC.hangup(); await E.endCall(d.endcall); if (F.callId === d.endcall) F.callId = null; return; }
     if (d.ftag) { const i = F.tags.indexOf(d.ftag); i < 0 ? F.tags.push(d.ftag) : F.tags.splice(i, 1); if (d.ftag === 'wheelchair') { F.vehicle = i < 0 ? 'access' : 'standard'; U.$('#f-veh', root).value = F.vehicle; } t.classList.toggle('on'); return; }
     const b = selBooking(), dr = selDriver();
     switch (d.act) {

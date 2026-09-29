@@ -187,18 +187,29 @@ function attach(server, { onUpgradeAuth }) {
       const b = world.E.bk(m.bid);
       safeSend({ type: 'completed', driverId: m.driverId, bid: m.bid, fare: b ? b.fare : null, payment: b ? b.payment : null });
     };
-    // WebRTC signaling relay, now carrying two independent channels per driver (peer: 'ops' or 'client') since a
-    // driver can be reached by either — ops sees every driver's ops-peer signals (any ops user might answer), a
-    // driver sees anything addressed to their own vehicle regardless of peer (they're only ever in one call at a
-    // time), a rider only sees client-peer signals for the driver on their own current trip. Never echoed back
-    // to whoever sent it.
+    // WebRTC signaling relay, two independent addressing modes:
+    //  - channel:'driver' (driver<->ops or driver<->rider) — id is a driverId, disambiguated by peer ('ops' vs
+    //    'client'). Ops sees every driver's ops-peer signals (any ops user might answer), a driver sees anything
+    //    for their own vehicle regardless of peer (only ever in one call at a time), a rider only sees
+    //    client-peer signals for the driver on their own current trip.
+    //  - channel:'call' (rider<->operator via the IVR queue) — id is the call's own id, since it isn't tied to
+    //    any vehicle. A rider only sees signals for their own phone; ops sees them broadcast (any ops user might
+    //    be the one who answers, same reasoning as the driver channel) — known limitation: if more than one IVR
+    //    call is ringing at once, an ops browser only keeps the most recent one's offer buffered until it's
+    //    answered, same single-call-at-a-time assumption the rest of this call system already makes.
+    // Never echoed back to whoever sent it.
     const onRtc = m => {
       if (m.fromUserId === user.id) return;
-      if (user.role === 'DRIVER') { if (!ctx.driver || m.driverId !== ctx.driver.id) return; }
-      else if (user.role === 'OPS') { if (m.peer !== 'ops') return; }
-      else if (user.role === 'CLIENT') { if (m.peer !== 'client' || m.phone !== ctx.phone) return; }
-      else return;
-      safeSend({ type: 'rtc', driverId: m.driverId, kind: m.kind, payload: m.payload, from: m.from, peer: m.peer });
+      if (m.channel === 'call') {
+        if (user.role === 'CLIENT') { if (m.phone !== ctx.phone) return; }
+        else if (user.role !== 'OPS') return;
+      } else {
+        if (user.role === 'DRIVER') { if (!ctx.driver || m.id !== ctx.driver.id) return; }
+        else if (user.role === 'OPS') { if (m.peer !== 'ops') return; }
+        else if (user.role === 'CLIENT') { if (m.peer !== 'client' || m.phone !== ctx.phone) return; }
+        else return;
+      }
+      safeSend({ type: 'rtc', channel: m.channel, id: m.id, kind: m.kind, payload: m.payload, from: m.from, peer: m.peer });
     };
     function safeSend(obj) { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj)); }
 
@@ -213,20 +224,32 @@ function attach(server, { onUpgradeAuth }) {
       let msg; try { msg = JSON.parse(raw); } catch (e) { return; }
       if (msg.type === 'rtc') {
         if (!msg.kind) return;
-        let driverId, phone, peer;
+        let id, phone, peer;
+        if (msg.channel === 'call') {
+          // rider<->operator, via the IVR queue — addressed by the call's own id, not a vehicle.
+          if (user.role === 'CLIENT') {
+            const c = ctx.state.calls.find(x => x.id === msg.id && x.phone === ctx.phone); if (!c) return;
+            id = c.id; phone = ctx.phone;
+          } else if (user.role === 'OPS') {
+            const c = ctx.state.calls.find(x => x.id === msg.id && x.operator === ctx.name); if (!c) return;
+            id = c.id; phone = c.phone;
+          } else return;
+          world.rtcListeners.forEach(fn => fn({ channel: 'call', id, phone, kind: msg.kind, payload: msg.payload, from: user.role.toLowerCase(), fromUserId: user.id }));
+          return;
+        }
         if (user.role === 'DRIVER') {
           if (!ctx.driver) return;
-          driverId = ctx.driver.id;
+          id = ctx.driver.id;
           peer = msg.peer === 'client' ? 'client' : 'ops';
           if (peer === 'client') { const b = world.E.bk(ctx.driver.bookingId); if (!b || !b.phone) return; phone = b.phone; }
         } else if (user.role === 'OPS') {
-          driverId = msg.driverId; peer = 'ops';
-          if (!driverId) return;
+          id = msg.id; peer = 'ops';
+          if (!id) return;
         } else if (user.role === 'CLIENT') {
           const b = riderActiveBooking(ctx); if (!b || !b.driverId) return;
-          driverId = b.driverId; phone = ctx.phone; peer = 'client';
+          id = b.driverId; phone = ctx.phone; peer = 'client';
         } else return;
-        world.rtcListeners.forEach(fn => fn({ driverId, phone, kind: msg.kind, payload: msg.payload, from: user.role.toLowerCase(), peer, fromUserId: user.id }));
+        world.rtcListeners.forEach(fn => fn({ channel: 'driver', id, phone, kind: msg.kind, payload: msg.payload, from: user.role.toLowerCase(), peer, fromUserId: user.id }));
         return;
       }
       if (msg.type !== 'action') return;
