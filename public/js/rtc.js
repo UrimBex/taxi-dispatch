@@ -39,7 +39,14 @@
     document.body.appendChild(debugBox);
     return debugBox;
   }
-  function renderDebugBox() { ensureDebugBox().textContent = events.slice(-12).join('\n'); }
+  // Diagnostic clutter, not something an actual rider should ever see — only shown for staff (driver/ops), who
+  // might still need it while this is new. RO.session isn't set yet on the very first page load until sign-in
+  // completes, so "not client" rather than "is staff" — errs toward showing it before that's known, never toward
+  // leaking it to a signed-in rider.
+  function renderDebugBox() {
+    if (RO.session && RO.session.role === 'client') { if (debugBox) { debugBox.remove(); debugBox = null; } return; }
+    ensureDebugBox().textContent = events.slice(-12).join('\n');
+  }
   function log(...args) {
     const line = `[rtc ${new Date().toISOString().slice(11, 23)}] ` + args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
     events.push(line); if (events.length > 100) events.shift();
