@@ -21,6 +21,7 @@
 const { WebSocketServer } = require('ws');
 const { getWorld } = require('./world');
 const { prisma } = require('./lib/db');
+const actionRateLimit = require('./lib/actionRateLimit');
 
 // name -> (ctx, args) => result. `ctx` carries the caller's resolved
 // identity (role, name, phone/driver/company) — never trust an id the
@@ -32,8 +33,18 @@ function riderActiveBooking(ctx) {
   return ctx.state.bookings.find(b => b.phone === ctx.phone && ['enroute', 'arrived', 'ontrip'].includes(b.status));
 }
 
+// A rider's phone+OTP session is lower-trust than a staff login (nothing but a text message stood between
+// "nobody" and this account), so the write-heavy client actions get throttled independent of whether each call
+// succeeds — unlike loginRateLimit.js, which only kicks in after repeated WRONG attempts.
+function requireRate(ctx, bucket, max, windowMs) {
+  if (!actionRateLimit.allow(`${bucket}:${ctx.phone}`, max, windowMs)) throw new Error('Too many requests — please wait a moment and try again.');
+}
+
 const CLIENT_ACTIONS = {
-  createBooking: (ctx, a) => ctx.E.createBooking({ pickup: a.pickup, dropoff: a.dropoff, vehicle: a.vehicle, payment: a.payment, whenMin: a.whenMin, tags: a.tags, source: 'app', phone: ctx.phone, name: ctx.name }),
+  createBooking: (ctx, a) => {
+    requireRate(ctx, 'createBooking', 10, 5 * 60 * 1000);
+    return ctx.E.createBooking({ pickup: a.pickup, dropoff: a.dropoff, vehicle: a.vehicle, payment: a.payment, whenMin: a.whenMin, tags: a.tags, source: 'app', phone: ctx.phone, name: ctx.name });
+  },
   cancelBooking: (ctx, a) => {
     const b = ctx.E.bk(a.id);
     if (!b || b.phone !== ctx.phone) return false;
@@ -41,7 +52,7 @@ const CLIENT_ACTIONS = {
   },
   // IVR simulator: an explicit demo of the phone line, not a security
   // boundary — the caller number is whatever the panel is dialling as.
-  ivrDial: (ctx, a) => ctx.E.newCall(a.phone, a.extra),
+  ivrDial: (ctx, a) => { requireRate(ctx, 'ivrDial', 10, 5 * 60 * 1000); return ctx.E.newCall(a.phone, a.extra); },
   ivrQueue: (ctx, a) => { const c = ctx.state.calls.find(x => x.id === a.callId); if (c) ctx.E.queueCall(c, a.why); },
   ivrEndCall: (ctx, a) => ctx.E.endCall(a.id),
   ivrRebook: (ctx, a) => ctx.E.createBooking({ pickup: a.pickup, dropoff: a.dropoff, vehicle: a.vehicle, payment: 'card', source: 'ivr', phone: a.phone, name: a.name, callId: a.callId }),
