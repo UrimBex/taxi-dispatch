@@ -28,7 +28,13 @@
       const z = this.o.zoom; // phone maps are auto-framed and static; the ops map is fully interactive
       const map = this.map = L.map(host, { zoomControl: z, scrollWheelZoom: z, doubleClickZoom: z, dragging: z, touchZoom: z, boxZoom: z, keyboard: false, zoomSnap: .5, zoomDelta: .5, attributionControl: true });
       map.attributionControl.setPrefix(false);
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' }).addTo(map);
+      // Wikimedia's public OSM tile service, not OSM's own tile.openstreetmap.org: the raw OSM server is
+      // volunteer-run and explicitly not meant for embedding in an app — it rate-limits/blocks
+      // ("osm.wiki/Blocked") once a handful of staff + riders are loading the map at once, which is exactly
+      // what happened in testing. CARTO's basemaps (tried first) now require a paid API key, so this uses
+      // Wikimedia's tile service instead — free, no key, explicitly meant for third-party embedding
+      // (https://wikitech.wikimedia.org/wiki/Maps/Public_tile_service).
+      L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', { maxZoom: 19, attribution: 'Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, imagery © <a href="https://wikimediafoundation.org/wiki/Maps_Terms_of_Use" target="_blank" rel="noopener">Wikimedia</a>' }).addTo(map);
       map.setView([42.663, 21.125], 12);
       this.heatLayer = L.layerGroup(); this.heatPolys = [];
       C.zones.forEach(z => {
