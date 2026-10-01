@@ -32,9 +32,8 @@ app.use((req, res, next) => {
   // step to hash or nonce them against) — still meaningfully narrows the attack surface vs. no CSP at all:
   // blocks loading a script/frame from anywhere unexpected, restricts connections to same-origin + the app's
   // own WS, and stops the page ever being framed by another origin (defense in depth alongside X-Frame-Options).
-  // img-src covers maps.wikimedia.org — see map.js for why tiles come from there rather than OSM's own
-  // (volunteer-run, embedding-hostile) tile.openstreetmap.org.
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://maps.wikimedia.org; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+  // img-src covers server.arcgisonline.com — see map.js for the trail of tile providers that didn't work.
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://server.arcgisonline.com; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
   if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   next();
 });
