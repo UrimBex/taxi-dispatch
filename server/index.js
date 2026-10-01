@@ -32,7 +32,10 @@ app.use((req, res, next) => {
   // step to hash or nonce them against) — still meaningfully narrows the attack surface vs. no CSP at all:
   // blocks loading a script/frame from anywhere unexpected, restricts connections to same-origin + the app's
   // own WS, and stops the page ever being framed by another origin (defense in depth alongside X-Frame-Options).
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+  // img-src needs both the bare host AND the wildcard: map.js requests tile.openstreetmap.org directly
+  // (no subdomain), which a *.tile.openstreetmap.org-only rule does NOT match (CSP wildcards require a
+  // subdomain prefix) — confirmed broken in the browser (tiles blocked) before adding the bare host here.
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org https://*.tile.openstreetmap.org; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
   if (req.secure) res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   next();
 });
