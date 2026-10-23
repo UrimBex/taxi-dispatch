@@ -13,6 +13,7 @@ const { decryptField } = require('./lib/crypto');
 const { COOKIE_NAME, loadSession } = require('./lib/session');
 const { parseCookies } = require('./lib/cookies');
 const { startBackupSchedule, getBackupHealth } = require('./lib/backup');
+const sms = require('./lib/sms');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const ws = require('./ws');
@@ -96,7 +97,20 @@ async function warnAboutDefaultPasswords() {
   }
 }
 
+// With the mock provider the sign-in code is shown on screen, so anyone who can reach the sign-in page can become
+// any rider. Fine on a laptop demo; unacceptable once this is reachable by real people — say so on every start.
+function warnAboutMockSms() {
+  if (!sms.isMock()) return;
+  let host = 'localhost'; try { host = new URL(process.env.APP_URL || 'https://localhost').hostname; } catch (e) { }
+  if (host === 'localhost' || host === '127.0.0.1') return;
+  console.warn('\n!!! SECURITY WARNING !!!');
+  console.warn(`NOTIFICATION_PROVIDER is "mock" but APP_URL is ${process.env.APP_URL}: rider sign-in codes are shown on screen, so anyone can sign in as any rider.`);
+  console.warn('Set NOTIFICATION_PROVIDER="twilio" (and the TWILIO_* values) in .env before real riders use this.\n');
+}
+
 async function main() {
+  sms.assertConfigured(); // throws with a clear message if a real provider is chosen but not fully set up
+  warnAboutMockSms();
   await prisma.$connect();
   await warnAboutDefaultPasswords().catch(err => console.error('[startup] default-password check failed:', err));
   startBackupSchedule();

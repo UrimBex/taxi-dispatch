@@ -1,6 +1,6 @@
 # RideOps — taxi dispatch service
 
-A real, installable dispatch service for a taxi company: rider app, phone line (IVR), operations room and driver
+A real, installable dispatch service for a taxi company: rider app (with an in-app call-dispatch line), operations room and driver
 app, all sharing one live fleet in real time. Built the same way as our other on-prem products (BarSaaS): a Node
 server with its own database, real accounts, HTTPS, a Windows Service install, scheduled backups and field-level
 encryption — not a demo that only works in one browser tab.
@@ -52,21 +52,38 @@ npm run dev
 
 Open http://localhost:3000 (or whatever `INTERNAL_PORT` you set).
 
-## Demo accounts (seeded by `npm run db:push` / `npm run db:seed`)
+## Accounts (seeded by `npm run db:push` / `npm run db:seed`)
 
-| Role | Sign-in | Sees |
+**A normal install** (what you do at the client) creates just a platform superuser (`superadmin`), the company, and
+one ops login (`ops`), each with a **random password printed once** by the seed — write them down then. Running the
+seed again never resets an existing account. Change a password any time with
+`npm run user:set-password -- <username>` (omit the password to generate one; it also signs that user out
+everywhere). That script is the only way to change the `superadmin` password; ops/driver logins can also be managed in
+`/admin.html`.
+
+**Demo mode** (`SEED_DEMO=1 npm run db:push`) instead creates the publicly-documented logins below, plus a demo driver
+and rider — for development and for `tools/smoke-test.js` only. Never use it on a real install.
+
+| Role | Sign-in (demo mode) | Sees |
 |---|---|---|
-| Client | phone number + text-message code (demo rider: `+383 44 111 222`; any other number registers a new rider) | Rider app (returning riders keep saved places and trip history) + the phone line (IVR) |
-| Driver | username `driver` / password `driver-demo-pass` | Driver app, bound to one vehicle (Ben Krasniqi, seat 7 of the fleet) — see *Fleet roster* below, this login won't exist once the roster's been replaced |
+| Client | phone number + text-message code (demo rider: `+383 44 111 222`; any other number registers a new rider) | Rider app (returning riders keep saved places and trip history) + the in-app call-dispatch line |
+| Driver | username `driver` / password `driver-demo-pass` | Driver app, bound to one vehicle (Ben Krasniqi, seat 7 of the fleet) — see *Fleet roster* below |
 | Ops room | username `ops` / password `ops-demo-pass` | Dispatch dashboard, alerts, call queue + operator desk, rules |
 | Superuser | username `superadmin` / password `super-admin-pass` | `/admin.html` — create more companies and driver logins |
 
-**Change all of these before this is reachable by anyone but you** — see `.env` and the admin panel. In dev mode,
-`NOTIFICATION_PROVIDER=mock` also returns the rider's verification code directly in the sign-in response (shown
-on screen, labelled "demo mode") instead of sending a real text — switch that once a real SMS provider is wired
-into `server/routes/auth.js`'s `sendCode` step.
+**Rider sign-in codes.** `NOTIFICATION_PROVIDER` in `.env` picks how the 6-digit code reaches the rider
+(`server/lib/sms.js`): `mock` (default) shows the code on screen — **demo only, anyone can then sign in as any
+rider, and the server warns about it on every start when `APP_URL` isn't localhost** — or `twilio`, which texts it
+for real (set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`; the
+server refuses to start if they're missing). Code requests are limited to 3 per number per 10 minutes and 20 per
+address per hour. Check Twilio's price/sender rules for +383 numbers before choosing it; another provider is a small
+change to `sendSms()`.
 
-Every account, live booking, driver position and rider profile is now real, shared state on the server — sign in
+**What each role can see.** The server never sends the whole company state to everyone: ops gets everything, a rider
+gets only their own bookings/profile/calls plus the fleet needed for the map, a driver gets only their own job
+(`server/lib/snapshot.js`). Riders can't dial as another number or touch anyone else's calls (`server/ws.js`).
+
+Every account, live booking, driver position and rider profile is real, shared state on the server — sign in
 as the client on your phone, the ops user on a laptop and the driver on another phone, and all three see the same
 world update live. (Signing into a *different* account in another tab of the *same* browser will sign the first
 tab out too, same as any cookie-based site — that's expected, not a bug; it doesn't happen across separate
@@ -74,25 +91,49 @@ devices/browsers, which is the normal way this gets used.)
 
 ## Installing on the client's Windows PC
 
-This mirrors the BarSaaS install exactly — same shape, same reasoning:
+Do this on the client's PC (Windows 10/11, wired network, set to never sleep; give it a fixed LAN IP in the router
+and a UPS if you can). Install Node.js LTS first.
 
-1. `npm install` on the target machine, then `npm run db:push` (creates the database and prints the seeded logins
-   — **change every password before continuing**, either via `/admin.html` once running or directly in the DB).
-2. Set `.env`: `DATA_ENCRYPTION_KEY` (required), `APP_URL` (the LAN IP or hostname the taxi office will use, e.g.
-   `https://192.168.1.22`), and optionally `BACKUP_MIRROR_DIR` pointed at a synced folder (OneDrive etc.) for
-   off-machine backup redundancy.
-3. `node scripts/generate-cert.js` — makes a 10-year self-signed certificate for that host. Install `certs/ca.crt`
-   into each device's trusted-root store to stop the browser warning (Windows: double-click it → "Install
-   Certificate" → Local Machine → Trusted Root Certification Authorities).
-4. From an **elevated** PowerShell/cmd window: `node scripts/install-service.js`. This registers "RideOps" as a
-   real Windows Service (`services.msc`) — it starts at boot and restarts itself on crash, running two processes:
-   the app itself (loopback-only, never directly reachable) and `scripts/https-proxy.js` in front of it, which is
-   what actually listens on the LAN over HTTPS (falls back to port 8443 if 443 is taken).
-5. Open `https://<that IP>/` from any device on the same network.
+1. **Get a clean copy** — `git clone https://github.com/UrimBex/taxi-dispatch.git C:\TaxiArdi`, then `npm install`.
+   Don't copy `node_modules`, `prisma/dev.db`, `backups`, `.env` or `certs` from a development machine: that database
+   holds test riders and drivers.
+2. **Configure** — copy `.env.example` to `.env` and set `DATA_ENCRYPTION_KEY` (generate with the command in the file;
+   keep a copy somewhere safe — losing it makes every rider phone number and backup unreadable), `INTERNAL_PORT=3000`,
+   `APP_URL` (`https://<the PC's fixed IP>` for now, the public address once step 7 is done),
+   `NOTIFICATION_PROVIDER=twilio` + the `TWILIO_*` values, and optionally `BACKUP_MIRROR_DIR` (a OneDrive folder).
+3. **Create the database — once** — `npm run db:push` prints the superadmin and ops passwords. **Write them down now**;
+   they're shown only this once. (Re-running is safe — existing accounts are never touched — but there's nothing
+   more to print.) To change one later: `npm run user:set-password -- superadmin`.
+4. **Certificate (office LAN)** — `node scripts/generate-cert.js <the fixed IP>`. On each office PC, install
+   `certs/ca.crt` into *Trusted Root Certification Authorities* (double-click → Install Certificate → Local Machine)
+   to stop the browser warning.
+5. **Install as a Windows Service** — from an **elevated** PowerShell: `node scripts/install-service.js`. This registers
+   "RideOps" (`services.msc`), starts at boot and restarts itself on crash, running the app (loopback-only) and
+   `scripts/https-proxy.js` in front of it (port 443, falling back to 8443). Open `https://<that IP>/` on an office PC.
+6. **Set up the company** — sign in at `/admin.html` as superadmin: add one ops login per dispatcher, then replace the
+   demo roster with the real drivers (see *Fleet roster*).
+7. **Public address for drivers and riders** — the LAN address only works inside the office; drivers and riders are on
+   mobile data and their phones need real HTTPS (GPS and the microphone refuse to work without it). Don't use a
+   `cloudflared tunnel --url …` quick tunnel for this: it drops and its address changes on every restart. Use a
+   *named* Cloudflare Tunnel on a domain you own (about $10–15/year): add the domain to a free Cloudflare account,
+   `winget install Cloudflare.cloudflared`, `cloudflared tunnel login`, `cloudflared tunnel create taxiardi`,
+   `cloudflared tunnel route dns taxiardi dispatch.<your-domain>`, a `config.yml` whose ingress sends that hostname to
+   `http://127.0.0.1:3000`, then `cloudflared service install` (copy `config.yml` and the credentials JSON into
+   `C:\Windows\System32\config\systemprofile\.cloudflared` — the service runs as LocalSystem and looks there).
+   Set `APP_URL=https://dispatch.<your-domain>` in `.env` and restart the RideOps service.
+8. **Acceptance test** — office PC signs in to ops; a driver phone on mobile data signs in, goes online and shows live
+   GPS on the ops map; a rider phone signs in (real text message arrives), books, the driver accepts and the trip
+   completes; calls work both ways; reboot the PC and confirm everything comes back by itself within ~2 minutes
+   without anyone logging in; unplug the internet and confirm the office ops PCs still work.
 
-To reinstall: `node scripts/uninstall-service.js` first. To restore from a backup:
-`node scripts/restore-backup.js` (`--list` to see snapshots, `--file <path>` to pick one — stops the service,
-swaps the database, keeps a safety copy of what it replaced, starts the service back up).
+There is no real telephone number behind the "Call dispatch" tab yet — it's an in-app (internet) call to the ops room
+with a touch-tone menu in front. A real phone line needs a telephony provider (Twilio Voice, a SIP trunk with a
+Kosovo number) and is a separate piece of work — see *Not in this pass*.
+
+To reinstall: `node scripts/uninstall-service.js` first. To restore from a backup: `node scripts/restore-backup.js`
+(`--list` to see snapshots, `--file <path>` to pick one — stops the service, swaps the database, keeps a safety copy
+of what it replaced, starts the service back up). To update: `git pull`, `npm install`, restart the RideOps service
+(never `npm run db:push` again on a live install).
 
 ## Fleet roster (real drivers, not the demo names)
 
@@ -139,9 +180,10 @@ A few things worth knowing:
 
 ## Not in this pass
 
-- **Real SMS/telephony**: the phone line is a simulator (`public/js/ivr.js`) and rider codes are logged/returned
-  directly rather than texted — wire a real provider into `server/routes/auth.js` (`request-code`) and the IVR
-  simulator's touch-tone flow into a real telephony provider (Twilio Studio, Amazon Connect) separately.
+- **Real telephony**: SMS sign-in codes are real now (see *Accounts* above), but there is no phone number behind the
+  call line: `public/js/ivr.js` is an in-app call (WebRTC) to the ops room behind a touch-tone menu. Inbound calls from
+  an actual phone number need a telephony provider (Twilio Voice / SIP trunk) bridged into the operator's browser, and
+  booking/receipt SMS to riders (today those only appear as in-app notifications) would use the same `sendSms()`.
 - **Real payments**: fares are simulated (`completeTrip()` in `engine.js`) with a random failure rate for the ops
   "retry payment" flow to have something to do — wire a real processor in similarly to BarSaaS's mock-Stripe.
 - **Driver stats/company settings persistence**: a driver's rating/trip-count/earnings and the Rules-tab settings
@@ -188,8 +230,9 @@ The service area is **Prishtina + Obiliq + Fushë Kosovë**, drawn on OpenStreet
 ## Manual end-to-end check
 
 `tools/smoke-test.js` exercises the real server over HTTP + WebSocket (login as each role, book, force-assign,
-verify cross-connection shared state, verify a client can't cancel someone else's booking, verify a driver can't
-call an ops-only action) — useful after changing anything in `server/`:
+verify the driver sees the job but a different rider doesn't, verify a client can't cancel someone else's booking,
+verify a driver can't call an ops-only action) — useful after changing anything in `server/`. It signs in with the demo
+passwords, so run it against a `SEED_DEMO=1` database only, never a real install:
 
 ```bash
 npm run dev &

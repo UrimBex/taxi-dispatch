@@ -64,7 +64,7 @@ async function main() {
   r = await jsonFetch('/api/admin/companies', {}, superCookie);
   const company = r.body[0];
   r = await jsonFetch(`/api/admin/companies/${company.id}/fleet`, {}, superCookie);
-  const freeSlot = r.body.find(s => !s.username);
+  const freeSlot = r.body.find(s => s.name === 'Smoke Test Driver') || r.body.find(s => !s.username); // reuse our own seat from a previous run instead of using up a new one each time
   const driverUsername = 'smoke-test-' + Date.now(), driverPassword = 'smoke-test-pass-123';
   await jsonFetch(`/api/admin/companies/${company.id}/fleet/${freeSlot.slot}/driver`, { method: 'PUT', body: JSON.stringify({ name: 'Smoke Test Driver', username: driverUsername, password: driverPassword }) }, superCookie);
   r = await jsonFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ username: driverUsername, password: driverPassword }) });
@@ -94,8 +94,12 @@ async function main() {
   const opsState = await waitFor(opsWs, m => m.type === 'state' && m.state.bookings.some(b => b.id === bookingId && b.status === 'enroute'), 4000).catch(() => null);
   console.log('ops sees booking enroute:', !!opsState);
 
-  const clientState = await waitFor(clientWs, m => m.type === 'state' && m.state.bookings.some(b => b.id === bookingId), 4000).catch(() => null);
-  console.log('client sees the SAME booking (cross-connection shared state):', !!clientState);
+  // Shared live state is per-role now: the assigned driver sees the job, but a rider only ever sees their OWN
+  // bookings — this one belongs to a different phone number, so the signed-in rider must not receive it at all.
+  const driverState = await waitFor(driverWs, m => m.type === 'state' && m.state.bookings.some(b => b.id === bookingId), 4000).catch(() => null);
+  console.log('assigned driver sees the booking (cross-connection shared state):', !!driverState);
+  const clientLatest = await waitFor(clientWs, m => m.type === 'state', 4000).catch(() => null);
+  console.log("a DIFFERENT rider does NOT see it (expected: true):", !!clientLatest && !JSON.stringify(clientLatest.state).includes('+38349999000'));
 
   console.log('\n== Client: cancel own booking, verify rejection of cancelling someone elses ==');
   const cancelOther = await rpc(clientWs, 'cancelBooking', { id: bookingId });
@@ -114,6 +118,8 @@ async function main() {
   console.log('ops hitting admin API:', r.status, r.body);
 
   opsWs.close(); clientWs.close(); driverWs.close();
+  // Don't leave a working login behind (the seat itself is reused by the next run).
+  await jsonFetch(`/api/admin/companies/${company.id}/fleet/${freeSlot.slot}/driver`, { method: 'DELETE' }, superCookie);
   console.log('\nAll checks ran.');
 }
 

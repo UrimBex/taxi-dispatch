@@ -11,6 +11,7 @@
     "cert:generate": "node scripts/generate-cert.js",
     "db:push": "prisma db push && node prisma/seed.js",
     "db:seed": "node prisma/seed.js",
+    "user:set-password": "node scripts/set-password.js",
     "db:studio": "prisma studio",
     "service:install": "node scripts/install-service.js",
     "service:uninstall": "node scripts/uninstall-service.js",

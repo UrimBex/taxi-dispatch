@@ -1,7 +1,7 @@
 // Sign-in. Two flows, matching the two kinds of account:
-//   - CLIENT: phone number + a 6-digit code (a mock "text message" — see
-//     the devCode note below; swap in a real SMS provider by having
-//     sendCode() call it instead of just holding the code in memory).
+//   - CLIENT: phone number + a 6-digit code, texted by the provider chosen in
+//     NOTIFICATION_PROVIDER (server/lib/sms.js). With the "mock" provider the
+//     code is returned to the browser instead — demo only, see sms.js.
 //   - DRIVER / OPS / SUPERUSER: username + password (bcrypt), created by
 //     the seed script or the admin panel.
 // Either way, success creates a DB-backed Session (server/lib/session.js)
@@ -16,6 +16,8 @@ const { COOKIE_NAME, createSession, destroySession } = require('../lib/session')
 const rateLimit = require('../lib/loginRateLimit');
 const { getWorld } = require('../world');
 const { serializeCookie } = require('../lib/cookies');
+const sms = require('../lib/sms');
+const actionRateLimit = require('../lib/actionRateLimit');
 
 const router = express.Router();
 
@@ -23,7 +25,6 @@ const router = express.Router();
 // couple of minutes and there is no reason to survive a restart.
 const pendingCodes = new Map(); // phoneHash -> { code, expiresAt, tries }
 const CODE_TTL_MS = 5 * 60 * 1000;
-const MOCK_SMS = (process.env.NOTIFICATION_PROVIDER || 'mock') === 'mock';
 
 function normPhone(s) { const d = String(s || '').replace(/\D/g, ''); return d ? '+' + d : ''; }
 
@@ -48,15 +49,23 @@ router.post('/request-code', async (req, res) => {
   if (phone.length < 9) return res.status(400).json({ error: 'Enter a valid phone number.' });
   const key = hashLookup(phone);
   if (rateLimit.isLockedOut('otp', key)) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+  // Asking for a code costs a real text message and can be aimed at anyone's number, so cap how often — per
+  // number (stops someone bombing a victim) and per caller address (stops one source sweeping many numbers).
+  if (!actionRateLimit.allow(`otp-phone:${key}`, 3, 10 * 60 * 1000) || !actionRateLimit.allow(`otp-ip:${req.ip}`, 20, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+  }
 
   const code = String(Math.floor(100000 + Math.random() * 900000));
   pendingCodes.set(key, { code, expiresAt: Date.now() + CODE_TTL_MS, tries: 0 });
-
-  // Mock SMS provider: logs it, and hands it back in the response for the
-  // UI to display as if it had arrived — see NOTIFICATION_PROVIDER in
-  // .env.example for wiring in a real one instead.
-  console.log(`[sms mock] to ${phone}: your Taxi Ardi verification code is ${code}`);
-  res.json({ ok: true, devCode: MOCK_SMS ? code : undefined });
+  try {
+    await sms.sendSms(phone, sms.otpText(code, req.body && req.body.lang));
+  } catch (err) {
+    pendingCodes.delete(key);
+    console.error('[sms] could not send a sign-in code:', err.message); // deliberately no phone number or code in the log
+    return res.status(502).json({ error: 'Could not send the code right now. Please try again.' });
+  }
+  // Only the mock provider hands the code back to the browser (demo mode) — a real provider never does.
+  res.json({ ok: true, devCode: sms.isMock() ? code : undefined });
 });
 
 router.post('/verify-code', async (req, res) => {

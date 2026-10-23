@@ -22,6 +22,7 @@ const { WebSocketServer } = require('ws');
 const { getWorld } = require('./world');
 const { prisma } = require('./lib/db');
 const actionRateLimit = require('./lib/actionRateLimit');
+const { snapshotFor } = require('./lib/snapshot');
 
 // name -> (ctx, args) => result. `ctx` carries the caller's resolved
 // identity (role, name, phone/driver/company) — never trust an id the
@@ -40,6 +41,8 @@ function requireRate(ctx, bucket, max, windowMs) {
   if (!actionRateLimit.allow(`${bucket}:${ctx.phone}`, max, windowMs)) throw new Error('Too many requests — please wait a moment and try again.');
 }
 
+const ownCall = (ctx, id) => ctx.state.calls.find(x => x.id === id && x.phone === ctx.phone);
+
 const CLIENT_ACTIONS = {
   createBooking: (ctx, a) => {
     requireRate(ctx, 'createBooking', 10, 5 * 60 * 1000);
@@ -50,13 +53,16 @@ const CLIENT_ACTIONS = {
     if (!b || b.phone !== ctx.phone) return false;
     ctx.E.cancelBooking(a.id, 'rider'); return true;
   },
-  // IVR simulator: an explicit demo of the phone line, not a security
-  // boundary — the caller number is whatever the panel is dialling as.
-  ivrDial: (ctx, a) => { requireRate(ctx, 'ivrDial', 10, 5 * 60 * 1000); return ctx.E.newCall(a.phone, a.extra); },
-  ivrQueue: (ctx, a) => { const c = ctx.state.calls.find(x => x.id === a.callId); if (c) ctx.E.queueCall(c, a.why); },
-  ivrEndCall: (ctx, a) => ctx.E.endCall(a.id),
-  ivrRebook: (ctx, a) => ctx.E.createBooking({ pickup: a.pickup, dropoff: a.dropoff, vehicle: a.vehicle, payment: 'card', source: 'ivr', phone: a.phone, name: a.name, callId: a.callId }),
-  logEvent: (ctx, a) => ctx.E.log(String(a.text || '').slice(0, 300), 'ops'),
+  // The in-app "call dispatch" line. A rider can only ever call as themselves (their own verified phone), and
+  // only act on their own calls — nothing the client sends decides whose call it is or what fields it carries.
+  ivrDial: ctx => { requireRate(ctx, 'ivrDial', 10, 5 * 60 * 1000); return ctx.E.newCall(ctx.phone); },
+  ivrQueue: (ctx, a) => { const c = ownCall(ctx, a.callId); if (c) ctx.E.queueCall(c, a.why === 'unknown caller' ? 'unknown caller' : 'caller requested operator'); },
+  ivrEndCall: (ctx, a) => { if (ownCall(ctx, a.id)) ctx.E.endCall(a.id); },
+  ivrRebook: (ctx, a) => {
+    requireRate(ctx, 'createBooking', 10, 5 * 60 * 1000);
+    const c = a.callId ? ownCall(ctx, a.callId) : null;
+    return ctx.E.createBooking({ pickup: a.pickup, dropoff: a.dropoff, vehicle: a.vehicle, payment: 'card', source: 'ivr', phone: ctx.phone, name: ctx.name, callId: c ? c.id : null });
+  },
   // Saved places persist to the account (so they survive a restart and follow the rider to any device), not just
   // the in-memory world — kept in sync there too so this session's own UI sees the change immediately.
   // Cosmetic (dispatch never reads it) but has to be a real mutation on the shared world, not a client-side-only
@@ -133,8 +139,7 @@ const DRIVER_ACTIONS = {
   // than erroring) if there's no rider phone to reach, e.g. no active job.
   voipStartRider: ctx => { const d = ctx.driver; if (!d) return; const b = ctx.E.bk(d.bookingId); if (b && b.phone) ctx.E.voipStart(d.id, 'driver', 'client'); },
   voipAnswer: ctx => ctx.E.voipAnswer(),
-  voipEnd: ctx => ctx.E.voipEnd(),
-  logEvent: (ctx, a) => ctx.E.log(String(a.text || '').slice(0, 300), 'ops')
+  voipEnd: ctx => ctx.E.voipEnd()
 };
 
 const OPS_ACTIONS = {
@@ -181,7 +186,8 @@ function attach(server, { onUpgradeAuth }) {
       emitChange: () => world.RO.bus.emit('change')
     };
 
-    const sendSnapshot = () => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'state', state: world.state })); };
+    // Per-role slice of the world (server/lib/snapshot.js) — never the raw state, which holds every rider's data.
+    const sendSnapshot = () => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'state', state: snapshotFor(user.role, world.state, ctx) })); };
     // Sent once, right away: lets the client confirm the identity this connection actually authenticated as
     // matches what it believes it signed in as. Matters when a browser reconnects (e.g. after a network blip) —
     // the reconnect re-reads whatever cookie is current, which, if a *different* account signed in on another tab

@@ -85,7 +85,7 @@
     e.preventDefault();
     const phone = U.$('#lg-phone').value; U.setText(U.$('#lg-perr'), '');
     let resp;
-    try { resp = await api('/api/auth/request-code', { method: 'POST', body: JSON.stringify({ phone }) }); }
+    try { resp = await api('/api/auth/request-code', { method: 'POST', body: JSON.stringify({ phone, lang: I.lang() }) }); }
     catch (err) { return U.setText(U.$('#lg-perr'), err.message); }
     pendingPhone = phone;
     U.setText(U.$('#lg-sentto'), U.fmtPhone(U.normPhone(phone))); U.$('#lg-otp').value = ''; U.setText(U.$('#lg-oerr'), '');

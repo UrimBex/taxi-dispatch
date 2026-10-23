@@ -1,9 +1,11 @@
-/* IVR phone simulator: recognises repeat callers by number, DTMF menu, status, quick rebooking, hand-off to operator queue. */
+/* In-app "call dispatch" line: an automated touch-tone menu (status, quick rebook) that hands off to a live operator
+   over the internet (WebRTC, see rtc.js). A rider can only call as themselves — the server enforces that, this
+   panel just doesn't offer anything else. There is no real telephone number behind it (no telephony provider). */
 (function (RO) {
   'use strict';
   const C = RO.City, U = RO.util, E = RO.E, bus = RO.bus;
   const root = U.$('#ivr'), st = () => RO.state, I = RO.i18n, tr = I.t;
-  const iv = { callId: null, phone: '', step: 'idle', lines: [], tts: false, sel: '+38344111222', custom: '', seen: '', bookedSeen: null, t0: 0 };
+  const iv = { callId: null, phone: '', step: 'idle', lines: [], tts: false, seen: '', bookedSeen: null, t0: 0 };
 
   const say = (who, text) => {
     iv.lines.push({ who, text });
@@ -66,15 +68,13 @@
   }
 
   function ui() {
-    const known = Object.values(st().customers).map(c => `<option value="${c.phone}">${U.esc(c.name)} — ${U.fmtPhone(c.phone)} ${U.esc(tr('iv.repeat'))}</option>`).join('');
+    const own = (RO.session && RO.session.phone) || '', ownName = (RO.session && RO.session.name) || '';
     root.innerHTML = `<div class="ivr-wrap" id="ivr-wrap"><div class="ivr-idle" id="ivr-idle"><div class="logo">☎️</div><h2>${tr('iv.callTitle')}</h2><p>${tr('iv.callDesc')}</p>
-      <label>${tr('iv.callingfrom')}<select id="iv-sel">${known}<option value="+38349555010">${U.esc(tr('iv.unknown'))}</option><option value="custom">${tr('iv.custom')}</option></select></label>
-      <input id="iv-custom" type="tel" placeholder="+383 4x xxx xxx" style="display:none">
+      <label>${tr('iv.callingfrom')}<select id="iv-sel" disabled><option value="${U.esc(own)}">${U.esc(ownName)}${own ? ' — ' + U.esc(U.fmtPhone(own)) : ''}</option></select></label>
       <label class="chk"><input type="checkbox" id="iv-tts"> ${tr('iv.tts')}</label><button class="btn primary" data-act="dial">${tr('iv.callbtn')}</button></div>
       <div class="ivr-call" id="ivr-call" style="display:none"><div class="ivr-head"><div><b id="iv-title"></b><small id="iv-sub"></small></div><button class="btn sm danger" data-act="hang">${tr('iv.hang')}</button></div>
       <div class="ivr-log" id="ivr-log"></div><div class="keypad" id="ivr-keys">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map(k => `<button data-key="${k}">${k}</button>`).join('')}</div></div></div>`;
-    iv.shown = 'idle'; U.$('#iv-sel', root).value = iv.sel;
-    U.$('#iv-tts', root).checked = iv.tts; U.$('#iv-custom', root).value = iv.custom; U.$('#iv-custom', root).style.display = iv.sel === 'custom' ? '' : 'none';
+    iv.shown = 'idle'; U.$('#iv-tts', root).checked = iv.tts;
   }
   let rtcNote = '';
   bus.on('rtc-error', msg => { rtcNote = ` · ⚠️ ${msg}`; draw(); });
@@ -94,14 +94,12 @@
   root.addEventListener('click', e => {
     const t = e.target.closest('button'); if (!t) return;
     if (t.dataset.key) return press(t.dataset.key);
-    if (t.dataset.act === 'dial') { const p = iv.sel === 'custom' ? U.normPhone(U.$('#iv-custom', root).value) : iv.sel; if (p.length >= 9) { iv.tts = U.$('#iv-tts', root).checked; dial(p); } }
+    if (t.dataset.act === 'dial') { const p = RO.session && RO.session.phone; if (p && p.length >= 9) { iv.tts = U.$('#iv-tts', root).checked; dial(p); } }
     else if (t.dataset.act === 'hang') { if (iv.step === 'ended') { iv.step = 'idle'; ui(); draw(); } else hangup(tr('iv.hungup')); }
   });
   root.addEventListener('change', e => {
-    if (e.target.id === 'iv-sel') { iv.sel = e.target.value; U.$('#iv-custom', root).style.display = iv.sel === 'custom' ? '' : 'none'; }
-    else if (e.target.id === 'iv-tts') iv.tts = e.target.checked;
+    if (e.target.id === 'iv-tts') iv.tts = e.target.checked;
   });
-  root.addEventListener('input', e => { if (e.target.id === 'iv-custom') iv.custom = e.target.value; });
   /* Follow the operator side of the call. */
   function sync() {
     if (iv.step !== 'queued' && iv.step !== 'operator') { draw(); return; }
