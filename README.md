@@ -182,6 +182,26 @@ A few things worth knowing:
   snap onto a nearby parallel/crossing road instead of the "right" one. A known, minor limitation of snapping
   discrete fixes onto a simplified grid graph, not a bug to chase further for this scale of app.
 
+## Installable app (PWA)
+
+Riders and drivers can install the app from the browser — no app store: it gets a home-screen icon and opens
+full-screen. Android/Chrome shows an **Install** button in the header (and Chrome's own prompt); on iPhone/iPad the
+button explains Safari's *Share → Add to Home Screen*. It's `public/manifest.webmanifest` + the icons in
+`public/icons/` + `public/sw.js` (registered from `public/js/main.js`).
+
+- **Needs real HTTPS on a public address** (see the install steps, the named Cloudflare Tunnel). Browsers only offer
+  install, and only run the service worker, on `https://` (or `localhost`) — the office LAN's self-signed certificate
+  won't do for phones.
+- **The service worker is deliberately minimal**: the network always wins when it's reachable, so a deployed update
+  shows up on the next load and a cached script can never talk to a newer server; the cache only lets the app shell
+  open when the network is down. It never caches `/api/`, the live WebSocket, `/admin.html` or map tiles — live data
+  is never served stale.
+- **Limit — drivers:** a web app can't keep reading GPS or reliably alert for a 15-second job offer once the phone is
+  locked or the app is in the background. For real shifts the driver app needs the native (App Store / Play Store)
+  wrapper with background location and push notifications; the PWA is fine for riders and for trying things out.
+- Icons are plain PNGs (192, 512, maskable 512, 180 for Apple) with the brand yellow and a taxi — replace the files
+  in `public/icons/` to rebrand; nothing else references them but the manifest and `index.html`.
+
 ## Not in this pass
 
 - **Phone line into the ops room**: riders can already dial the dispatch mobile(s) (`DISPATCH_PHONES`), but a call from a

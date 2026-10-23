@@ -112,6 +112,22 @@
   });
   U.$('#logout').addEventListener('click', logout);
 
+  /* ---------- installable app (PWA) ---------- */
+  // Android/desktop Chrome hand us an install prompt to trigger from our own button; iPhone/iPad have no such API,
+  // so there the button just explains Safari's "Add to Home Screen". Hidden once the app is already installed.
+  let installPrompt = null;
+  const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const syncInstall = () => { U.$('#install').style.display = !standalone() && (installPrompt || isIOS) ? '' : 'none'; };
+  addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; syncInstall(); });
+  addEventListener('appinstalled', () => { installPrompt = null; syncInstall(); });
+  U.$('#install').addEventListener('click', async () => {
+    if (!installPrompt) return alert(t('pwa.iosHelp'));
+    installPrompt.prompt(); await installPrompt.userChoice.catch(() => { }); installPrompt = null; syncInstall();
+  });
+  syncInstall();
+  if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => { }));
+
   /* ---------- ops-only controls (RPCs — the clock/fleet are shared, not local) ---------- */
   U.$('#reset').addEventListener('click', () => { if (confirm(t('hdr.resetConfirm'))) RO.E.reset(); });
   bus.on('tick', () => { U.setText(U.$('#clock'), U.clock(RO.state.simSec)); });

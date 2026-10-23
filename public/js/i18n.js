@@ -19,6 +19,8 @@
     'hdr.resetConfirm': ['Të rivendoset gjendja e dispeçimit të kësaj kompanie (shoferët, rezervimet, thirrjet)? Llogaritë e pasagjerëve ruhen.', "Reset this company's dispatch state (drivers, bookings, calls)? Rider accounts are kept."],
     'hdr.signout': ['Dil', 'Sign out', 'Odjavi se'],
     'hdr.lang': ['Gjuha', 'Language', 'Jezik'],
+    'pwa.install': ["Instalo", "Install", "Instaliraj"],
+    'pwa.iosHelp': ["Për ta instaluar: shtyp butonin Ndaj (katrori me shigjetë) në Safari, pastaj \"Shto në ekranin kryesor\".", "To install: tap the Share button (the square with an arrow) in Safari, then \"Add to Home Screen\".", "Za instalaciju: dodirnite dugme Podeli (kvadrat sa strelicom) u Safariju, pa \"Dodaj na početni ekran\"."],
     'hdr.reconnecting': ['po rilidhet…', 'reconnecting…', 'ponovno povezivanje…'],
     'role.client': ['Klient', 'Client', 'Klijent'],
     'role.driver': ['Shofer', 'Driver', 'Vozač'],

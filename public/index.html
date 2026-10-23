@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1220">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Taxi Ardi">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Taxi Ardi · Automatizim i dispeçimit të taksive</title>
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="css/style.css">
@@ -13,6 +21,7 @@
   <div class="sim">
     <span class="clock" id="clock">08:15</span>
     <span class="lang-sw" id="lang-sw" title="Gjuha / Language"></span>
+    <button class="btn sm" id="install" style="display:none" data-i18n="pwa.install">Instalo</button>
     <button class="btn sm ghost ops-only" id="reset" data-i18n="hdr.reset">↺ Rivendos</button>
     <span class="who"><span id="who"></span><button class="btn sm ghost" id="logout" data-i18n="hdr.signout">Dil</button></span>
   </div>
