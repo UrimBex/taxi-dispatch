@@ -57,11 +57,12 @@ app.use(async (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
-// The dispatch mobile number riders can dial (DISPATCH_PHONE in .env). Public on purpose — it's printed on the
-// "Call dispatch" screen — and sanity-checked so a typo in .env can't turn into a malformed tel: link.
+// The dispatch mobile numbers riders can dial (DISPATCH_PHONES in .env, comma-separated). Public on purpose —
+// they're printed on the "Call dispatch" screen — and each is sanity-checked so a typo in .env can't turn into a
+// malformed tel: link (invalid entries are dropped, at most 5 shown).
 app.get('/api/config', (req, res) => {
-  const raw = String(process.env.DISPATCH_PHONE || '').trim();
-  res.json({ dispatchPhone: /^\+?[0-9][0-9 ()-]{5,19}$/.test(raw) ? raw : null });
+  const phones = String(process.env.DISPATCH_PHONES || '').split(',').map(x => x.trim()).filter(x => /^\+?[0-9][0-9 ()-]{5,19}$/.test(x)).slice(0, 5);
+  res.json({ dispatchPhones: phones });
 });
 
 app.get('/api/health', async (req, res) => {

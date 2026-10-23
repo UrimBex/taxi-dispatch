@@ -9,7 +9,7 @@
   const ROLE = { client: { icon: '📱', label: () => t('role.client') }, driver: { icon: '🚗', label: () => t('role.driver') }, ops: { icon: '🎧', label: () => t('role.ops') } };
   let curDev = 'customer';
   RO.session = null;
-  RO.config = { dispatchPhone: null };
+  RO.config = { dispatchPhones: [] };
 
   async function api(path, opts) {
     const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts));
@@ -37,7 +37,7 @@
     renderWho();
     U.$('#login').style.display = 'none'; U.$('#lg-toast').innerHTML = '';
     RO.live.connect();
-    if (role === 'client') { RO.client.signIn(who.phone, who.name); showDev('customer'); }
+    if (role === 'client') { RO.client.signIn(who.phone, who.name); showDev('ivr'); } // riders land on "Call dispatch"; the booking app is one tap away
     else if (role === 'driver') showDev('driver');
     else bus.emit('devshow', 'ops');
     window.scrollTo(0, 0);

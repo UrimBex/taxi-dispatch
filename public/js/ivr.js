@@ -69,9 +69,9 @@
 
   function ui() {
     const own = (RO.session && RO.session.phone) || '', ownName = (RO.session && RO.session.name) || '';
-    const dp = RO.config && RO.config.dispatchPhone;
-    // A normal phone call to the dispatch mobile (no internet or provider needed) — the in-app call below it is the alternative.
-    const phoneBlock = dp ? `<a class="btn primary" href="tel:${U.esc(dp.replace(/[^+0-9]/g, ''))}" style="display:block;text-decoration:none;text-align:center">${U.esc(tr('iv.phoneCall', { phone: dp }))}</a><small>${tr('iv.phoneNote')}</small><p class="mut" style="margin-top:6px">${tr('iv.orApp')}</p>` : '';
+    const dps = (RO.config && RO.config.dispatchPhones) || [];
+    // A normal phone call to a dispatch mobile (no internet or provider needed) — the in-app call below is the alternative.
+    const phoneBlock = dps.length ? dps.map(n => `<a class="btn primary" href="tel:${U.esc(n.replace(/[^+0-9]/g, ''))}" style="display:block;text-decoration:none;text-align:center;margin-bottom:8px">${U.esc(tr('iv.phoneCall', { phone: n }))}</a>`).join('') + `<small>${tr('iv.phoneNote')}</small><p class="mut" style="margin-top:6px">${tr('iv.orApp')}</p>` : '';
     root.innerHTML = `<div class="ivr-wrap" id="ivr-wrap"><div class="ivr-idle" id="ivr-idle"><div class="logo">☎️</div><h2>${tr('iv.callTitle')}</h2>${phoneBlock}<p>${tr('iv.callDesc')}</p>
       <label>${tr('iv.callingfrom')}<select id="iv-sel" disabled><option value="${U.esc(own)}">${U.esc(ownName)}${own ? ' — ' + U.esc(U.fmtPhone(own)) : ''}</option></select></label>
       <label class="chk"><input type="checkbox" id="iv-tts"> ${tr('iv.tts')}</label><button class="btn primary" data-act="dial">${tr('iv.callbtn')}</button></div>

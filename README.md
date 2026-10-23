@@ -126,10 +126,11 @@ and a UPS if you can). Install Node.js LTS first.
    completes; calls work both ways; reboot the PC and confirm everything comes back by itself within ~2 minutes
    without anyone logging in; unplug the internet and confirm the office ops PCs still work.
 
-**Dispatch phone number.** Set `DISPATCH_PHONE` in `.env` to the mobile number dispatchers answer (for example
-`+38344123456`). The rider app's *Call dispatch* tab then shows a *Call* button that dials it as a normal phone call —
-no telephony provider needed, and it works without internet. Those calls are answered on that phone: they don't appear
-in the ops call queue, and one mobile can only take one call at a time. The tab's second option, calling from the app
+**Dispatch phone numbers.** Set `DISPATCH_PHONES` in `.env` to the mobile number(s) dispatchers answer, comma-separated
+(for example `+383 44 123 456, +383 49 123 456`, up to 5). The rider app's *Call dispatch* tab then shows a *Call* button
+per number that dials it as a normal phone call — no telephony provider needed, and it works without internet. Those
+calls are answered on that phone: they don't appear in the ops call queue, and one mobile can only take one call at a
+time (more numbers = more simultaneous calls). The tab's second option, calling from the app
 over the internet, rings the ops room instead (call queue + operator desk). A real number that feeds the ops room's
 queue needs a telephony provider — see *Not in this pass*.
 
@@ -183,7 +184,7 @@ A few things worth knowing:
 
 ## Not in this pass
 
-- **Phone line into the ops room**: riders can already dial the dispatch mobile (`DISPATCH_PHONE`), but a call from a
+- **Phone line into the ops room**: riders can already dial the dispatch mobile(s) (`DISPATCH_PHONES`), but a call from a
   real phone doesn't appear in the ops call queue or pop up on the operator's screen. That needs a telephony provider
   (Twilio Voice / SIP trunk) bridged into the operator's browser. Booking/receipt SMS to riders (today only in-app
   notifications) would use the same `sendSms()`.
