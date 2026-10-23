@@ -9,6 +9,7 @@
   const ROLE = { client: { icon: '📱', label: () => t('role.client') }, driver: { icon: '🚗', label: () => t('role.driver') }, ops: { icon: '🎧', label: () => t('role.ops') } };
   let curDev = 'customer';
   RO.session = null;
+  RO.config = { dispatchPhone: null };
 
   async function api(path, opts) {
     const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts));
@@ -120,6 +121,7 @@
   RO.start = async function () {
     I.apply();
     showLogin();
+    api('/api/config').then(c => { RO.config = c; bus.emit('config'); }).catch(() => { }); // optional extras; the app works without them
     try {
       const me = await api('/api/auth/me');
       enter(me.role, { name: me.name, phone: me.phone, driverId: me.driverId });

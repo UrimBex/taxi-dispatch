@@ -57,6 +57,13 @@ app.use(async (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 
+// The dispatch mobile number riders can dial (DISPATCH_PHONE in .env). Public on purpose — it's printed on the
+// "Call dispatch" screen — and sanity-checked so a typo in .env can't turn into a malformed tel: link.
+app.get('/api/config', (req, res) => {
+  const raw = String(process.env.DISPATCH_PHONE || '').trim();
+  res.json({ dispatchPhone: /^\+?[0-9][0-9 ()-]{5,19}$/.test(raw) ? raw : null });
+});
+
 app.get('/api/health', async (req, res) => {
   const health = await getBackupHealth().catch(() => null);
   res.json({ ok: true, backup: health });

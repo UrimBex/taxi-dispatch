@@ -69,7 +69,10 @@
 
   function ui() {
     const own = (RO.session && RO.session.phone) || '', ownName = (RO.session && RO.session.name) || '';
-    root.innerHTML = `<div class="ivr-wrap" id="ivr-wrap"><div class="ivr-idle" id="ivr-idle"><div class="logo">☎️</div><h2>${tr('iv.callTitle')}</h2><p>${tr('iv.callDesc')}</p>
+    const dp = RO.config && RO.config.dispatchPhone;
+    // A normal phone call to the dispatch mobile (no internet or provider needed) — the in-app call below it is the alternative.
+    const phoneBlock = dp ? `<a class="btn primary" href="tel:${U.esc(dp.replace(/[^+0-9]/g, ''))}" style="display:block;text-decoration:none;text-align:center">${U.esc(tr('iv.phoneCall', { phone: dp }))}</a><small>${tr('iv.phoneNote')}</small><p class="mut" style="margin-top:6px">${tr('iv.orApp')}</p>` : '';
+    root.innerHTML = `<div class="ivr-wrap" id="ivr-wrap"><div class="ivr-idle" id="ivr-idle"><div class="logo">☎️</div><h2>${tr('iv.callTitle')}</h2>${phoneBlock}<p>${tr('iv.callDesc')}</p>
       <label>${tr('iv.callingfrom')}<select id="iv-sel" disabled><option value="${U.esc(own)}">${U.esc(ownName)}${own ? ' — ' + U.esc(U.fmtPhone(own)) : ''}</option></select></label>
       <label class="chk"><input type="checkbox" id="iv-tts"> ${tr('iv.tts')}</label><button class="btn primary" data-act="dial">${tr('iv.callbtn')}</button></div>
       <div class="ivr-call" id="ivr-call" style="display:none"><div class="ivr-head"><div><b id="iv-title"></b><small id="iv-sub"></small></div><button class="btn sm danger" data-act="hang">${tr('iv.hang')}</button></div>
@@ -117,5 +120,6 @@
   });
   bus.on('devshow', () => { ui(); draw(true); });
   I.onChange(() => { ui(); draw(true); });
+  bus.on('config', () => { ui(); draw(true); });
   ui();
 })(window.RO);

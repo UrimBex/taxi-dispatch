@@ -126,9 +126,12 @@ and a UPS if you can). Install Node.js LTS first.
    completes; calls work both ways; reboot the PC and confirm everything comes back by itself within ~2 minutes
    without anyone logging in; unplug the internet and confirm the office ops PCs still work.
 
-There is no real telephone number behind the "Call dispatch" tab yet — it's an in-app (internet) call to the ops room
-with a touch-tone menu in front. A real phone line needs a telephony provider (Twilio Voice, a SIP trunk with a
-Kosovo number) and is a separate piece of work — see *Not in this pass*.
+**Dispatch phone number.** Set `DISPATCH_PHONE` in `.env` to the mobile number dispatchers answer (for example
+`+38344123456`). The rider app's *Call dispatch* tab then shows a *Call* button that dials it as a normal phone call —
+no telephony provider needed, and it works without internet. Those calls are answered on that phone: they don't appear
+in the ops call queue, and one mobile can only take one call at a time. The tab's second option, calling from the app
+over the internet, rings the ops room instead (call queue + operator desk). A real number that feeds the ops room's
+queue needs a telephony provider — see *Not in this pass*.
 
 To reinstall: `node scripts/uninstall-service.js` first. To restore from a backup: `node scripts/restore-backup.js`
 (`--list` to see snapshots, `--file <path>` to pick one — stops the service, swaps the database, keeps a safety copy
@@ -180,10 +183,10 @@ A few things worth knowing:
 
 ## Not in this pass
 
-- **Real telephony**: SMS sign-in codes are real now (see *Accounts* above), but there is no phone number behind the
-  call line: `public/js/ivr.js` is an in-app call (WebRTC) to the ops room behind a touch-tone menu. Inbound calls from
-  an actual phone number need a telephony provider (Twilio Voice / SIP trunk) bridged into the operator's browser, and
-  booking/receipt SMS to riders (today those only appear as in-app notifications) would use the same `sendSms()`.
+- **Phone line into the ops room**: riders can already dial the dispatch mobile (`DISPATCH_PHONE`), but a call from a
+  real phone doesn't appear in the ops call queue or pop up on the operator's screen. That needs a telephony provider
+  (Twilio Voice / SIP trunk) bridged into the operator's browser. Booking/receipt SMS to riders (today only in-app
+  notifications) would use the same `sendSms()`.
 - **Real payments**: fares are simulated (`completeTrip()` in `engine.js`) with a random failure rate for the ops
   "retry payment" flow to have something to do — wire a real processor in similarly to BarSaaS's mock-Stripe.
 - **Driver stats/company settings persistence**: a driver's rating/trip-count/earnings and the Rules-tab settings
