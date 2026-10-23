@@ -3,7 +3,7 @@
 (function (RO) {
   'use strict';
   const C = RO.City, U = RO.util, V = RO.VEH, E = RO.E, bus = RO.bus, MV = RO.MapView;
-  const root = U.$('#cust'), st = () => RO.state;
+  const root = U.$('#cust'), st = () => RO.state, I = RO.i18n, tr = I.t;
   const me = {
     phone: null, name: '', tab: 'book', pu: { key: 'gps' }, dr: { key: '' }, pin: 'dropoff',
     vehicle: 'standard', payment: 'card', when: 0, tags: [], bid: null, needsBidPickup: false,
@@ -15,9 +15,10 @@
   const booking = () => me.bid && E.bk(me.bid);
 
   function places() {
-    const c = cust(), out = [{ key: 'gps', group: 'Here', name: '📍 Current location', label: C.label(me.gps), ...me.gps }];
-    (c ? c.favorites : []).forEach((f, i) => out.push({ key: 'fav' + i, group: 'Saved', name: '⭐ ' + f.name, label: f.name, x: f.x, y: f.y }));
-    C.LM.forEach(l => out.push({ key: 'lm:' + l.id, group: 'Places', name: l.icon + ' ' + l.name, label: l.name, x: l.x, y: l.y }));
+    const c = cust(), out = [{ key: 'gps', group: tr('cu.here'), name: tr('cu.current'), label: C.label(me.gps), ...me.gps }];
+    (c ? c.favorites : []).forEach((f, i) => out.push({ key: 'fav' + i, group: tr('cu.saved'), name: '⭐ ' + f.name, label: f.name, x: f.x, y: f.y }));
+    // label stays the canonical (English) landmark name — it's what gets stored on the booking; only the shown name is translated
+    C.LM.forEach(l => out.push({ key: 'lm:' + l.id, group: tr('cu.places'), name: l.icon + ' ' + I.place(l.name), label: l.name, x: l.x, y: l.y }));
     return out;
   }
   function resolve(sel) {
@@ -26,9 +27,9 @@
   }
   function options(sel, placeholder) {
     let h = `<option value="">${placeholder}</option>`, g = '';
-    places().forEach(p => { if (p.group !== g) { if (g) h += '</optgroup>'; h += `<optgroup label="${p.group}">`; g = p.group; } h += `<option value="${p.key}" ${sel.key === p.key ? 'selected' : ''}>${U.esc(p.name)}</option>`; });
+    places().forEach(p => { if (p.group !== g) { if (g) h += '</optgroup>'; h += `<optgroup label="${U.esc(p.group)}">`; g = p.group; } h += `<option value="${p.key}" ${sel.key === p.key ? 'selected' : ''}>${U.esc(p.name)}</option>`; });
     h += '</optgroup>';
-    if (sel.key === 'pin') h += `<option value="pin" selected>📌 Pinned: ${U.esc(sel.pt.label)}</option>`;
+    if (sel.key === 'pin') h += `<option value="pin" selected>${U.esc(tr('cu.pinned', { label: I.place(sel.pt.label) }))}</option>`;
     return h;
   }
 
@@ -37,9 +38,9 @@
     me.map = null; me.shown = '';
     if (!me.phone) { root.innerHTML = ''; return; }
     const showTrack = me.tab === 'book' && !!booking();
-    root.innerHTML = `<div class="c-top"><div><small>Hello,</small><b>${U.esc(cust().name)}</b></div><button class="ghost" data-act="logout" title="Sign out">⎋</button></div>` +
+    root.innerHTML = `<div class="c-top"><div><small>${tr('cu.hello')}</small> <b>${U.esc(cust().name)}</b></div><button class="ghost" data-act="logout" title="${U.esc(tr('hdr.signout'))}">⎋</button></div>` +
       `<div class="c-body">${me.tab === 'book' ? (showTrack ? trackShell() : bookShell()) : me.tab === 'trips' ? tripsHTML() : placesHTML()}</div>` +
-      `<nav class="c-nav">${[['book', '🚕', 'Ride'], ['trips', '🕒', 'Trips'], ['places', '⭐', 'Places']].map(([k, i, l]) => `<button class="${me.tab === k ? 'on' : ''}" data-tab="${k}"><span>${i}</span>${l}</button>`).join('')}</nav>` +
+      `<nav class="c-nav">${[['book', '🚕', tr('cu.ride')], ['trips', '🕒', tr('cu.trips')], ['places', '⭐', tr('cu.placesTab')]].map(([k, i, l]) => `<button class="${me.tab === k ? 'on' : ''}" data-tab="${k}"><span>${i}</span>${l}</button>`).join('')}</nav>` +
       `<div id="c-ovl"></div>`;
     me.shown = me.tab === 'book' ? (showTrack ? 'track' : 'book') : me.tab;
     if (me.shown === 'book') syncSelects();
@@ -48,27 +49,27 @@
   }
   function bookShell() {
     return `<div class="c-map" id="c-map"></div><div class="c-sheet">
-      <div class="seg" id="c-pin"><button data-pin="pickup">📍 Tap map: pickup</button><button data-pin="dropoff">🏁 Tap map: drop-off</button></div>
-      <label>Pickup<select id="c-pu"></select></label><label>Drop-off<select id="c-do"></select></label>
+      <div class="seg" id="c-pin"><button data-pin="pickup">${tr('cu.tapPickup')}</button><button data-pin="dropoff">${tr('cu.tapDrop')}</button></div>
+      <label>${tr('cu.pickup')}<select id="c-pu"></select></label><label>${tr('cu.dropoff')}<select id="c-do"></select></label>
       <div class="veh-row" id="c-veh"></div>
-      <div class="two"><label>Payment<select id="c-pay">${Object.entries(RO.PAY).map(([k, v]) => `<option value="${k}" ${me.payment === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <label>When<select id="c-when">${[[0, 'Now'], [10, 'In 10 min'], [30, 'In 30 min'], [60, 'In 1 hour'], [120, 'In 2 hours']].map(([m, l]) => `<option value="${m}" ${me.when === m ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
-      <div class="chips" id="c-tags"></div><button class="btn primary" id="c-book" data-act="book">Choose a destination</button></div>`;
+      <div class="two"><label>${tr('cu.payment')}<select id="c-pay">${Object.keys(RO.PAY).map(k => `<option value="${k}" ${me.payment === k ? 'selected' : ''}>${I.pay(k)}</option>`).join('')}</select></label>
+      <label>${tr('cu.when')}<select id="c-when">${[0, 10, 30, 60, 120].map(m => `<option value="${m}" ${me.when === m ? 'selected' : ''}>${tr('when.' + m)}</option>`).join('')}</select></label></div>
+      <div class="chips" id="c-tags"></div><button class="btn primary" id="c-book" data-act="book">${tr('cu.choosedest')}</button></div>`;
   }
   const trackShell = () => `<div class="c-map short" id="c-map"></div><div class="c-card" id="c-track"></div>`;
   function syncSelects() {
     const pu = U.$('#c-pu', root), dr = U.$('#c-do', root); if (!pu) return;
-    pu.innerHTML = options(me.pu, 'Choose pickup'); dr.innerHTML = options(me.dr, 'Where to?');
+    pu.innerHTML = options(me.pu, tr('cu.choosepu')); dr.innerHTML = options(me.dr, tr('cu.whereto'));
   }
   function tripsHTML() {
     const t = cust().trips;
-    return `<div class="c-list"><h3>Your trips</h3>${t.length ? t.map((x, i) => `<div class="li"><div><b>${U.esc(x.pickup.label)}</b> → <b>${U.esc(x.dropoff.label)}</b><small>${V[x.vehicle].label} · ${U.money(x.fare)}${x.at ? ' · ' + x.id : ''}</small></div><button class="btn sm" data-rebook="${i}">Rebook</button></div>`).join('') : '<p class="mut">No trips yet.</p>'}</div>`;
+    return `<div class="c-list"><h3>${tr('cu.yourtrips')}</h3>${t.length ? t.map((x, i) => `<div class="li"><div><b>${U.esc(I.place(x.pickup.label))}</b> → <b>${U.esc(I.place(x.dropoff.label))}</b><small>${I.veh(x.vehicle)} · ${U.money(x.fare)}${x.at ? ' · ' + x.id : ''}</small></div><button class="btn sm" data-rebook="${i}">${tr('cu.rebook')}</button></div>`).join('') : `<p class="mut">${tr('cu.notrips')}</p>`}</div>`;
   }
   function placesHTML() {
     const f = cust().favorites;
-    return `<div class="c-list"><h3>Saved places</h3>${f.length ? f.map((x, i) => `<div class="li"><div><b>⭐ ${U.esc(x.name)}</b><small>${U.esc(C.label(x))}</small></div><button class="btn sm ghost" data-delfav="${i}">Remove</button></div>`).join('') : '<p class="mut">Nothing saved yet.</p>'}
-      <h3>Save a place</h3><div class="two"><input id="c-favname" placeholder="Name (e.g. Gym)" maxlength="16"><select id="c-favsrc"><option value="pu">current pickup</option><option value="dr">current drop-off</option></select></div>
-      <button class="btn" data-act="addfav">Save place</button></div>`;
+    return `<div class="c-list"><h3>${tr('cu.savedplaces')}</h3>${f.length ? f.map((x, i) => `<div class="li"><div><b>⭐ ${U.esc(x.name)}</b><small>${U.esc(I.place(C.label(x)))}</small></div><button class="btn sm ghost" data-delfav="${i}">${tr('cu.remove')}</button></div>`).join('') : `<p class="mut">${tr('cu.nothing')}</p>`}
+      <h3>${tr('cu.saveaplace')}</h3><div class="two"><input id="c-favname" placeholder="${U.esc(tr('cu.favph'))}" maxlength="16"><select id="c-favsrc"><option value="pu">${tr('cu.curpu')}</option><option value="dr">${tr('cu.curdr')}</option></select></div>
+      <button class="btn" data-act="addfav">${tr('cu.saveplace')}</button></div>`;
   }
 
   /* ---------- events ---------- */
@@ -115,25 +116,25 @@
   function trackHTML(b) {
     const d = E.drv(b.driverId), eta = E.driverEta(b), when = U.clock(b.scheduledSim || 0);
     const drvCard = d ? `<div class="drv"><div class="av">${U.initials(d.name)}</div><div><b>${U.esc(d.name)}</b> <span class="star">★ ${d.rating}</span><small>${d.model} · ${d.plate}</small></div><button class="btn sm" data-act="callDriver">📞</button></div>` : '';
-    const route = `<div class="rt"><span>📍 ${U.esc(b.pickup.label)}</span><span>🏁 ${U.esc(b.dropoff.label)}</span></div>`;
-    const cancel = `<button class="btn ghost danger" data-act="cancel">Cancel ride</button>`;
+    const route = `<div class="rt"><span>📍 ${U.esc(I.place(b.pickup.label))}</span><span>🏁 ${U.esc(I.place(b.dropoff.label))}</span></div>`;
+    const cancel = `<button class="btn ghost danger" data-act="cancel">${tr('cu.cancelride')}</button>`;
     const min = m => Math.max(1, Math.round(m));
     switch (b.status) {
-      case 'scheduled': return `<div class="stat"><b>🗓 Scheduled for ${when}</b><small>We assign your driver ${st().settings.leadMin} min before pickup.</small></div>${route}${cancel}`;
-      case 'pending': return `<div class="stat"><div class="spin"></div><b>Finding your driver…</b><small>Waiting ${U.mmss((Date.now() - b.pendingSince) / 1000)}${b.alerted ? ' · our ops team has been alerted and is on it' : ''}</small></div>${route}${cancel}`;
-      case 'offered': return `<div class="stat"><div class="spin"></div><b>Contacting a nearby driver…</b><small>Request sent, waiting for confirmation</small></div>${route}${cancel}`;
-      case 'enroute': return `<div class="stat ok"><b>Driver on the way · ${min(eta)} min</b><small>${b.forced ? 'Assigned by our dispatcher' : 'Confirmed'}</small></div>${drvCard}${route}${cancel}`;
-      case 'arrived': return `<div class="stat ok"><b>🚕 Your driver has arrived</b><small>Look for plate ${d ? d.plate : ''}</small></div>${drvCard}${route}`;
-      case 'ontrip': return `<div class="stat"><b>On trip · ${min(eta)} min to destination</b><small>Est. fare ${U.money(b.est.fare)}</small></div>${drvCard}${route}<button class="btn ghost" data-act="sos-info" disabled>🛡 Trip shared with ops room</button>`;
-      case 'completed': return `<div class="stat ok"><b>Trip complete · ${U.money(b.fare)}</b><small>${RO.PAY[b.payment]} — ${{ processing: 'processing…', paid: 'paid ✓', failed: 'payment failed, our team will retry', invoiced: 'billed to corporate account', cash: 'pay driver in cash', none: '' }[b.pay.state]}</small></div>
-        <div class="rate">${b.rating ? `Thanks for rating ${'★'.repeat(b.rating)}` : 'Rate your driver: ' + [1, 2, 3, 4, 5].map(n => `<button data-rate="${n}">★</button>`).join('')}</div><button class="btn primary" data-act="done">Done</button>`;
-      case 'cancelled': return `<div class="stat"><b>Ride cancelled</b></div><button class="btn primary" data-act="done">Book again</button>`;
+      case 'scheduled': return `<div class="stat"><b>${tr('cu.sched', { when })}</b><small>${tr('cu.leadnote', { n: st().settings.leadMin })}</small></div>${route}${cancel}`;
+      case 'pending': return `<div class="stat"><div class="spin"></div><b>${tr('cu.finding')}</b><small>${tr('cu.waiting', { t: U.mmss((Date.now() - b.pendingSince) / 1000) })}${b.alerted ? tr('cu.alerted') : ''}</small></div>${route}${cancel}`;
+      case 'offered': return `<div class="stat"><div class="spin"></div><b>${tr('cu.contacting')}</b><small>${tr('cu.reqsent')}</small></div>${route}${cancel}`;
+      case 'enroute': return `<div class="stat ok"><b>${tr('cu.ontheway', { n: min(eta) })}</b><small>${b.forced ? tr('cu.assignedby') : tr('cu.confirmed')}</small></div>${drvCard}${route}${cancel}`;
+      case 'arrived': return `<div class="stat ok"><b>${tr('cu.arrived')}</b><small>${tr('cu.lookplate', { plate: d ? d.plate : '' })}</small></div>${drvCard}${route}`;
+      case 'ontrip': return `<div class="stat"><b>${tr('cu.ontrip', { n: min(eta) })}</b><small>${tr('cu.estfare', { fare: U.money(b.est.fare) })}</small></div>${drvCard}${route}<button class="btn ghost" data-act="sos-info" disabled>${tr('cu.shared')}</button>`;
+      case 'completed': return `<div class="stat ok"><b>${tr('cu.complete', { fare: U.money(b.fare) })}</b><small>${I.pay(b.payment)} — ${tr('ps.' + b.pay.state)}</small></div>
+        <div class="rate">${b.rating ? tr('cu.thanks', { stars: '★'.repeat(b.rating) }) : tr('cu.rate') + ' ' + [1, 2, 3, 4, 5].map(n => `<button data-rate="${n}">★</button>`).join('')}</div><button class="btn primary" data-act="done">${tr('cu.done')}</button>`;
+      case 'cancelled': return `<div class="stat"><b>${tr('cu.cancelled')}</b></div><button class="btn primary" data-act="done">${tr('cu.bookagain')}</button>`;
     }
     return '';
   }
   let rtcNote = '';
   bus.on('rtc-error', msg => { rtcNote = ` · ⚠️ ${msg}`; voipView(); });
-  bus.on('rtc-state', s => { rtcNote = s === 'connected' ? ' · 🔊 audio live' : s === 'connecting' ? ' · connecting audio…' : ''; voipView(); });
+  bus.on('rtc-state', s => { rtcNote = s === 'connected' ? tr('rtc.live') : s === 'connecting' ? tr('rtc.connecting') : ''; voipView(); });
   function toast(text, actions) {
     const o = U.$('#c-ovl', root); if (!o) return;
     U.setHTML(o, text ? `<div class="d-toast"><span>${text}</span>${actions || ''}</div>` : '');
@@ -143,10 +144,10 @@
   // current trip — st().voip is one shared slot company-wide, and other riders'/ops's calls aren't this rider's.
   function voipView() {
     const b = booking(), v = st().voip; if (!b || !v || v.peer !== 'client' || v.driverId !== b.driverId) return toast('');
-    const d = E.drv(v.driverId), name = d ? U.esc(d.name) : 'your driver';
-    if (v.state === 'ringing' && v.from === 'driver') toast(`📞 Incoming call from ${name}` + rtcNote, '<button class="btn sm primary" data-act="vans">Answer</button><button class="btn sm ghost" data-act="vend">Decline</button>');
-    else if (v.state === 'ringing') toast(`📞 Calling ${name}…` + rtcNote, '<button class="btn sm ghost" data-act="vend">Cancel</button>');
-    else toast(`📞 Connected to ${name} · ${U.mmss((Date.now() - v.t1) / 1000)}${rtcNote}`, '<button class="btn sm danger" data-act="vend">Hang up</button>');
+    const d = E.drv(v.driverId), name = d ? U.esc(d.name) : tr('cu.yourdriver');
+    if (v.state === 'ringing' && v.from === 'driver') toast(tr('cu.incoming', { name }) + rtcNote, `<button class="btn sm primary" data-act="vans">${tr('cu.answer')}</button><button class="btn sm ghost" data-act="vend">${tr('cu.decline')}</button>`);
+    else if (v.state === 'ringing') toast(tr('cu.calling', { name }) + rtcNote, `<button class="btn sm ghost" data-act="vend">${tr('cu.cancel')}</button>`);
+    else toast(tr('cu.connected', { name, t: U.mmss((Date.now() - v.t1) / 1000) }) + rtcNote, `<button class="btn sm danger" data-act="vend">${tr('cu.hangup')}</button>`);
   }
   function refresh(force) {
     if (!me.phone || !root.offsetParent) return;
@@ -155,17 +156,17 @@
     if (me.shown === 'book') {
       const pu = resolve(me.pu), dr = resolve(me.dr);
       U.$$('#c-pin button', root).forEach(b => b.classList.toggle('on', b.dataset.pin === me.pin));
-      U.setHTML(U.$('#c-tags', root), Object.entries(RO.TAGS).map(([k, l]) => `<button class="chip ${me.tags.includes(k) ? 'on' : ''}" data-tag="${k}">${l}</button>`).join(''));
+      U.setHTML(U.$('#c-tags', root), Object.keys(RO.TAGS).map(k => `<button class="chip ${me.tags.includes(k) ? 'on' : ''}" data-tag="${k}">${I.tag(k)}</button>`).join(''));
       const t = Date.now();
       if (force || t - lastEst > 900) {
         lastEst = t; const ests = {};
         if (pu && dr) Object.keys(V).forEach(k => ests[k] = E.estimate(pu, dr, k));
         U.setHTML(U.$('#c-veh', root), Object.keys(V).map(k => {
           const e = ests[k];
-          return `<button class="veh ${me.vehicle === k ? 'on' : ''}" data-veh="${k}"><span>${V[k].icon}</span><b>${V[k].label.replace(' (6 seats)', '')}</b><small>${e ? (e.pickupEta == null ? 'no car nearby' : Math.max(1, Math.round(e.pickupEta)) + ' min away') : '—'}</small><em>${e ? U.money(e.fare) : ''}</em></button>`;
+          return `<button class="veh ${me.vehicle === k ? 'on' : ''}" data-veh="${k}"><span>${V[k].icon}</span><b>${I.vehShort(k)}</b><small>${e ? (e.pickupEta == null ? tr('cu.nocar') : tr('cu.minaway', { n: Math.max(1, Math.round(e.pickupEta)) })) : '—'}</small><em>${e ? U.money(e.fare) : ''}</em></button>`;
         }).join(''));
         const btn = U.$('#c-book', root), e = ests[me.vehicle];
-        btn.disabled = !(pu && dr); btn.textContent = pu && dr ? `Book ${V[me.vehicle].label.replace(' (6 seats)', '')} · ${U.money(e.fare)}${me.when ? ' · scheduled' : ''}` : 'Choose a destination';
+        btn.disabled = !(pu && dr); btn.textContent = pu && dr ? tr('cu.book', { veh: I.vehShort(me.vehicle), fare: U.money(e.fare) }) + (me.when ? tr('cu.scheduled') : '') : tr('cu.choosedest');
       }
       const under = pu && dr ? MV.line(C.route(pu, dr), 'm-route') : '';
       let over = ''; st().drivers.filter(d => d.online && d.status === 'available').forEach(d => { over += MV.car(d, { s: 1.5 }); });
@@ -198,10 +199,11 @@
   bus.on('change', () => refresh(false));
   bus.on('sms', m => {
     if (m.to !== me.phone) return;
-    const n = document.createElement('div'); n.className = 'sms-toast'; n.innerHTML = `<b>💬 Messages · Taxi Ardi</b><span>${U.esc(m.text)}</span>`;
+    const n = document.createElement('div'); n.className = 'sms-toast'; n.innerHTML = `<b>${U.esc(tr('cu.sms'))}</b><span>${U.esc(I.tx(m.text))}</span>`;
     U.$('#dev-customer').appendChild(n); setTimeout(() => n.remove(), 7000);
   });
   bus.on('devshow', id => { if (id === 'customer') { me.shown = ''; render(); } });
+  I.onChange(() => { if (me.phone) { me.viewKey = null; render(); } });
   /* used by the role sign-in (main.js): the client account arrives already signed in as the rider it belongs to */
   RO.client = {
     signIn(phone, name) {

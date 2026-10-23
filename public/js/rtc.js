@@ -72,7 +72,7 @@
     if (p && p.catch) p.catch(() => armUnlock());
   }
   function armUnlock() {
-    bus.emit('rtc-error', 'Tap anywhere to enable audio');
+    bus.emit('rtc-error', RO.i18n.t('rtc.tap'));
     if (unlockArmed) return;
     unlockArmed = true;
     document.addEventListener('click', function handler() {
@@ -94,7 +94,7 @@
   }
 
   async function getMic() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('This browser/context has no microphone access (needs HTTPS or localhost).');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error(RO.i18n.t('rtc.nomic'));
     if (!localStream) { log('requesting microphone...'); localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); log('microphone granted', localStream.getTracks().map(t => t.label)); }
     return localStream;
   }

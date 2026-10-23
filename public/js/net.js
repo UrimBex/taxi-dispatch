@@ -39,7 +39,7 @@
       else if (msg.type === 'driver-msg') bus.emit('driver-msg', msg.text);
       else if (msg.type === 'completed') bus.emit('completed', { driverId: msg.driverId, bid: msg.bid, fare: msg.fare, payment: msg.payment });
       else if (msg.type === 'rtc') bus.emit('rtc', { channel: msg.channel, id: msg.id, kind: msg.kind, payload: msg.payload, from: msg.from, peer: msg.peer });
-      else if (msg.type === 'result') { const p = pending.get(msg.id); if (p) { pending.delete(msg.id); msg.ok ? p.resolve(msg.value) : p.reject(new Error(msg.error || 'Action failed')); } }
+      else if (msg.type === 'result') { const p = pending.get(msg.id); if (p) { pending.delete(msg.id); msg.ok ? p.resolve(msg.value) : p.reject(new Error(RO.i18n.err(msg.error || 'Action failed'))); } }
     };
   }
   // One-way WebRTC signaling (SDP offer/answer, ICE candidates) — no response expected, so this bypasses the

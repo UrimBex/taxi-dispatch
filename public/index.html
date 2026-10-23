@@ -1,27 +1,28 @@
 <!doctype html>
-<html lang="en">
+<html lang="sq">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Taxi Ardi · Taxi Dispatch Automation</title>
+<title>Taxi Ardi · Automatizim i dispeçimit të taksive</title>
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="logo-sm">🚕</span><div><b>Taxi Ardi</b><small>Taxi dispatch automation · Prishtina · Obiliq · Fushë Kosovë</small></div></div>
+  <div class="brand"><span class="logo-sm">🚕</span><div><b>Taxi Ardi</b><small data-i18n="hdr.tagline">Automatizim i dispeçimit të taksive · Prishtinë · Obiliq · Fushë Kosovë</small></div></div>
   <div class="sim">
     <span class="clock" id="clock">08:15</span>
-    <button class="btn sm ghost ops-only" id="reset">↺ Reset</button>
-    <span class="who"><span id="who"></span><button class="btn sm ghost" id="logout">Sign out</button></span>
+    <span class="lang-sw" id="lang-sw" title="Gjuha / Language"></span>
+    <button class="btn sm ghost ops-only" id="reset" data-i18n="hdr.reset">↺ Rivendos</button>
+    <span class="who"><span id="who"></span><button class="btn sm ghost" id="logout" data-i18n="hdr.signout">Dil</button></span>
   </div>
 </header>
 <main class="layout">
   <section class="devices">
     <div class="dev-tabs" id="dev-tabs">
-      <button data-dev="customer" class="on">📱 Customer app</button>
-      <button data-dev="ivr">☎️ Phone / IVR</button>
-      <button data-dev="driver">🚗 Driver app</button>
+      <button data-dev="customer" class="on">📱 <span data-i18n="tab.customer">Aplikacioni i klientit</span></button>
+      <button data-dev="ivr">☎️ <span data-i18n="tab.ivr">Telefon / IVR</span></button>
+      <button data-dev="driver">🚗 <span data-i18n="tab.driver">Aplikacioni i shoferit</span></button>
     </div>
     <div class="device" id="dev-customer"><div class="notch"></div><div class="screen" id="cust"></div></div>
     <div class="device" id="dev-ivr" style="display:none"><div class="notch"></div><div class="screen" id="ivr"></div></div>
@@ -35,8 +36,8 @@
       <div class="ops-left">
         <div class="map-wrap">
           <div id="ops-map"></div>
-          <div class="map-tools"><label class="chk"><input type="checkbox" id="ops-heat" checked> Traffic</label><label class="chk"><input type="checkbox" id="ops-labels" checked> Labels</label><button class="btn sm" id="ops-fit" title="Zoom to the whole service area">⤢ Fit all</button><span id="pick-hint" class="pick-hint"></span></div>
-          <div class="legend"><span><i style="background:#22c55e"></i>Available</span><span><i style="background:#f59e0b"></i>Offered</span><span><i style="background:#6366f1"></i>To pickup</span><span><i style="background:#a855f7"></i>At pickup</span><span><i style="background:#0ea5e9"></i>On trip</span><span><i class="pin"></i>Waiting rider</span></div>
+          <div class="map-tools"><label class="chk"><input type="checkbox" id="ops-heat" checked> <span data-i18n="map.traffic">Trafiku</span></label><label class="chk"><input type="checkbox" id="ops-labels" checked> <span data-i18n="map.labels">Etiketat</span></label><button class="btn sm" id="ops-fit" data-i18n="map.fit" data-i18n-title="map.fitTitle">⤢ Shiko të gjitha</button><span id="pick-hint" class="pick-hint"></span></div>
+          <div class="legend"><span><i style="background:#22c55e"></i><span data-i18n="leg.available">Available</span></span><span><i style="background:#f59e0b"></i><span data-i18n="leg.offered">Offered</span></span><span><i style="background:#6366f1"></i><span data-i18n="leg.topickup">To pickup</span></span><span><i style="background:#a855f7"></i><span data-i18n="leg.atpickup">At pickup</span></span><span><i style="background:#0ea5e9"></i><span data-i18n="leg.ontrip">On trip</span></span><span><i class="pin"></i><span data-i18n="leg.waiting">Waiting rider</span></span></div>
           <div id="voip-modal" style="display:none"></div>
         </div>
         <div id="ops-detail" class="detail" style="display:none"></div>
@@ -48,32 +49,34 @@
 <div id="login" class="login" style="display:none">
   <div id="lg-toast"></div>
   <div class="login-card">
-    <div class="logo">🚕</div><h2>Taxi Ardi</h2><p>Sign in to open your workspace</p>
-    <div class="lg-tabs" id="lg-tabs"><button type="button" data-r="client" class="on">📱 Client</button><button type="button" data-r="driver">🚗 Driver</button><button type="button" data-r="ops">🎧 Ops room</button><button type="button" data-r="superuser">🛡️ Superuser</button></div>
+    <div class="logo">🚕</div><h2>Taxi Ardi</h2><p data-i18n="lg.sub">Hyni për të hapur hapësirën tuaj të punës</p>
+    <div class="lang-sw" id="lg-lang"></div>
+    <div class="lg-tabs" id="lg-tabs"><button type="button" data-r="client" class="on">📱 <span data-i18n="role.client">Klient</span></button><button type="button" data-r="driver">🚗 <span data-i18n="role.driver">Shofer</span></button><button type="button" data-r="ops">🎧 <span data-i18n="role.ops">Dhoma operative</span></button><button type="button" data-r="superuser">🛡️ <span data-i18n="role.superuser">Administrator</span></button></div>
     <div id="lg-client">
       <form id="lg-f1" autocomplete="off">
-        <label>Phone number<input id="lg-phone" type="tel" placeholder="+383 44 000 000"></label>
+        <label><span data-i18n="lg.phone">Numri i telefonit</span><input id="lg-phone" type="tel" placeholder="+383 44 000 000"></label>
         <div class="err" id="lg-perr"></div>
-        <button class="btn primary" type="submit">Send code</button>
-        <small>We'll text you a 6-digit code to confirm it's you.</small>
+        <button class="btn primary" type="submit" data-i18n="lg.send">Dërgo kodin</button>
+        <small data-i18n="lg.smsinfo">Do t'ju dërgojmë një kod 6-shifror me SMS për të konfirmuar se jeni ju.</small>
       </form>
       <form id="lg-f2" autocomplete="off" style="display:none">
-        <p class="sentto">We sent a 6-digit code to <b id="lg-sentto"></b></p>
+        <p class="sentto"><span data-i18n="lg.sentto">Dërguam një kod 6-shifror te</span> <b id="lg-sentto"></b></p>
         <input id="lg-otp" inputmode="numeric" maxlength="6" placeholder="••••••" style="text-align:center;letter-spacing:.4em;font-size:22px">
         <div class="err" id="lg-oerr"></div>
-        <button class="btn primary" type="submit">Verify and sign in</button>
-        <a href="#" id="lg-back">Use a different number</a>
+        <button class="btn primary" type="submit" data-i18n="lg.verify">Verifiko dhe hyr</button>
+        <a href="#" id="lg-back" data-i18n="lg.other">Përdor një numër tjetër</a>
       </form>
     </div>
     <form id="login-form" autocomplete="off" style="display:none">
-      <label>Username<input id="lg-user" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
-      <label>Password<input id="lg-pass" type="password" placeholder="password"></label>
+      <label><span data-i18n="lg.user">Përdoruesi</span><input id="lg-user" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
+      <label><span data-i18n="lg.pass">Fjalëkalimi</span><input id="lg-pass" type="password" placeholder="fjalëkalimi" data-i18n-ph="lg.passph"></label>
       <div class="err" id="lg-err"></div>
-      <button class="btn primary" type="submit">Sign in</button>
+      <button class="btn primary" type="submit" data-i18n="lg.signin">Hyr</button>
     </form>
   </div>
 </div>
 <script src="vendor/leaflet.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/roads.js"></script>
 <script src="js/city.js"></script>
 <script src="js/store.js"></script>

@@ -43,3 +43,23 @@ simulated route-following. That's a legitimate reason to touch them: a
 genuine shared-behaviour need, not something that only matters to one
 side. Keep changes there minimal and comment why, same as that one did —
 the read/mutation split above is still the default shape for anything new.
+
+# Interface languages (i18n)
+
+Albanian (`sq`, the default) and English for the client and ops interfaces,
+plus Serbian (`sr`) for the rider side only. The driver app and
+`admin.html` are still English-only. Everything lives in
+`public/js/i18n.js` — browser-only, never loaded by the server-side
+simulation:
+- UI strings: add a `[sq, en, sr]` entry to the dictionary there and use
+  `RO.i18n.t('key', {vars})` (static HTML uses `data-i18n` / `data-i18n-ph`
+  / `data-i18n-title`). Strings only the ops room ever shows may omit `sr`.
+- The engine (`engine.js`, shared with the server) keeps generating its
+  alert / log / timeline / SMS text in English, and landmark names stay
+  canonical English (`roads.js`) in stored bookings. They are translated at
+  *display* time: `RO.i18n.tx(text)` pattern-matches engine messages
+  (the `RULES` table), `RO.i18n.place(name)` translates landmark names. If
+  you add or reword an engine message, add/adjust its rule, or it simply
+  shows up in English. Never store translated text in shared state.
+- Which languages a screen offers depends on the role (`setContext` in
+  `main.js`): Serbian is client-only, the driver role is always English.

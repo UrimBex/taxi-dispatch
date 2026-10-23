@@ -5,26 +5,23 @@
    (set by the server) is what actually persists across a reload — GET /api/auth/me restores it, not localStorage. */
 (function (RO) {
   'use strict';
-  const U = RO.util, bus = RO.bus;
-  const ROLE = { client: { icon: '📱', label: 'Client' }, driver: { icon: '🚗', label: 'Driver' }, ops: { icon: '🎧', label: 'Ops room' } };
-  const HINTS = {
-    customer: 'Rider view: pick a destination (dropdown or tap the map), book, and watch your driver arrive. This is shared live with the ops room and driver app on any device — try opening ops in another tab.',
-    ivr: 'Caller view: press 1 for status, 2 to rebook your last trip, 3 for an operator (the ops user answers it under Calls).',
-    driver: "Driver view: you get real 15 s job offers when dispatch picks your vehicle. Try SOS or Cancel to trigger ops exceptions."
-  };
+  const U = RO.util, bus = RO.bus, I = RO.i18n, t = I.t;
+  const ROLE = { client: { icon: '📱', label: () => t('role.client') }, driver: { icon: '🚗', label: () => t('role.driver') }, ops: { icon: '🎧', label: () => t('role.ops') } };
+  let curDev = 'customer';
   RO.session = null;
 
   async function api(path, opts) {
     const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts));
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || 'Request failed.');
+    if (!res.ok) throw new Error(I.err(body.error || 'Request failed.'));
     return body;
   }
 
+  function renderWho() { if (RO.session) U.setText(U.$('#who'), `${ROLE[RO.session.role].icon} ${RO.session.name} · ${ROLE[RO.session.role].label()}`); }
   function showDev(k) {
     U.$$('.device').forEach(d => d.style.display = d.id === 'dev-' + k ? '' : 'none');
     U.$$('#dev-tabs button').forEach(b => b.classList.toggle('on', b.dataset.dev === k));
-    U.$('#dev-hint').textContent = HINTS[k] || '';
+    curDev = k; U.$('#dev-hint').textContent = t('hint.' + k);
     bus.emit('devshow', k);
   }
   U.$('#dev-tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showDev(b.dataset.dev); });
@@ -35,7 +32,8 @@
     if (role === 'superuser') { location.href = '/admin.html'; return; }
     RO.session = { role, name: who.name, phone: who.phone || null, driverId: who.driverId || null };
     document.body.dataset.role = role;
-    U.setText(U.$('#who'), `${ROLE[role].icon} ${who.name} · ${ROLE[role].label}`);
+    I.setContext(role); // after RO.session is set: the language on offer (and the translated UI) depends on the role
+    renderWho();
     U.$('#login').style.display = 'none'; U.$('#lg-toast').innerHTML = '';
     RO.live.connect();
     if (role === 'client') { RO.client.signIn(who.phone, who.name); showDev('customer'); }
@@ -58,17 +56,18 @@
     RO.session = null;
     delete document.body.dataset.role;
     if (RO.client) RO.client.signOut();
-    showLogin('Signed out — this browser was used to sign in as someone else in another tab.');
+    showLogin(t('lg.replaced'));
   }
   RO.auth = { logout, sessionReplaced };
 
   /* ---------- sign-in screen ---------- */
   let lgTab = 'client';
-  function setTab(t) {
-    lgTab = t;
-    U.$$('#lg-tabs button').forEach(b => b.classList.toggle('on', b.dataset.r === t));
-    U.$('#lg-client').style.display = t === 'client' ? '' : 'none';
-    U.$('#login-form').style.display = t === 'client' ? 'none' : '';
+  function setTab(t_) {
+    lgTab = t_;
+    I.setContext(t_, true);
+    U.$$('#lg-tabs button').forEach(b => b.classList.toggle('on', b.dataset.r === t_));
+    U.$('#lg-client').style.display = t_ === 'client' ? '' : 'none';
+    U.$('#login-form').style.display = t_ === 'client' ? 'none' : '';
     U.$('#lg-user').value = ''; U.$('#lg-pass').value = ''; U.setText(U.$('#lg-err'), '');
   }
   function showLogin(msg) {
@@ -91,7 +90,7 @@
     pendingPhone = phone;
     U.setText(U.$('#lg-sentto'), U.fmtPhone(U.normPhone(phone))); U.$('#lg-otp').value = ''; U.setText(U.$('#lg-oerr'), '');
     U.$('#lg-f1').style.display = 'none'; U.$('#lg-f2').style.display = ''; U.$('#lg-otp').focus();
-    if (resp.devCode) U.$('#lg-toast').innerHTML = `<div class="sms-toast"><b>💬 Messages · Taxi Ardi (demo mode)</b><span>Your verification code is ${U.esc(resp.devCode)}.</span></div>`;
+    if (resp.devCode) U.$('#lg-toast').innerHTML = `<div class="sms-toast"><b>${U.esc(t('lg.demo'))}</b><span>${U.esc(t('lg.demoCode', { code: resp.devCode }))}</span></div>`;
   });
   U.$('#lg-f2').addEventListener('submit', async e => {
     e.preventDefault();
@@ -113,11 +112,13 @@
   U.$('#logout').addEventListener('click', logout);
 
   /* ---------- ops-only controls (RPCs — the clock/fleet are shared, not local) ---------- */
-  U.$('#reset').addEventListener('click', () => { if (confirm("Reset this company's dispatch state (drivers, bookings, calls)? Rider accounts are kept.")) RO.E.reset(); });
+  U.$('#reset').addEventListener('click', () => { if (confirm(t('hdr.resetConfirm'))) RO.E.reset(); });
   bus.on('tick', () => { U.setText(U.$('#clock'), U.clock(RO.state.simSec)); });
   bus.on('live', up => { const b = document.body; b.classList.toggle('offline', !up); });
+  I.onChange(() => { renderWho(); if (RO.session && RO.session.role !== 'ops') U.$('#dev-hint').textContent = t('hint.' + curDev); });
 
   RO.start = async function () {
+    I.apply();
     showLogin();
     try {
       const me = await api('/api/auth/me');
